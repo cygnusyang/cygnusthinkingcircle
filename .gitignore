@@ -7,3 +7,5 @@ cygnusyang.github.io/public/
 cygnusyang.github.io/resources/
 .hugo_build.lock
 .claude/
+.venv/
+venv/

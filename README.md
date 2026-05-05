@@ -7,8 +7,10 @@
 ## 快速开始
 
 ```bash
-# 1. 安装依赖
-pip install anthropic
+# 1. 创建虚拟环境并安装依赖
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
 # 2. 配置 API key
 cp .env.example .env
