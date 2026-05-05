@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+.DS_Store
+tools/output/
+cygnusyang.github.io/public/
+cygnusyang.github.io/resources/
+.hugo_build.lock
+.claude/

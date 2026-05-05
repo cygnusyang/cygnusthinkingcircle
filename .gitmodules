@@ -1,0 +1,4 @@
+[submodule "cygnusyang.github.io"]
+	path = cygnusyang.github.io
+	url = git@github.com:cygnusyang/cygnusyang.github.io.git
+	branch = main
