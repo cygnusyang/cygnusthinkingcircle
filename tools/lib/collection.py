@@ -364,14 +364,16 @@ def _parse_cards_section(html: str) -> tuple[str, list[str], str]:
         cards_list: 每张卡片的完整 HTML 块
         after: 从 category-cards 闭标签开始到文件末尾的内容
     """
-    start_tag = '<div class="category-cards">'
     end_tag = '</div>'
 
-    start_idx = html.find(start_tag)
-    if start_idx == -1:
+    # 用 regex 匹配开标签（可能含 id 等额外属性）
+    start_m = re.search(r'<div\s[^>]*class="category-cards"[^>]*>', html)
+    if not start_m:
         return "", [], ""
+    start_idx = start_m.start()
+    start_tag_full = start_m.group(0)
 
-    inner_start = start_idx + len(start_tag)
+    inner_start = start_idx + len(start_tag_full)
 
     # 计数嵌套 div 以找到匹配的 </div>
     depth = 1
@@ -465,6 +467,36 @@ def _card_exists(html: str, label: str) -> bool:
     return f'aria-label="{label}"' in html
 
 
+def _sync_pinned_categories(index_path: Path, project_slug: str) -> None:
+    """将项目 slug 添加到 _index.md 的 pinned_categories frontmatter 中。"""
+    html = index_path.read_text(encoding="utf-8")
+
+    # 匹配 pinned_categories: ["...", "..."]
+    pinned_re = re.compile(r'(pinned_categories:\s*\[)([^\]]*)(\])')
+    m = pinned_re.search(html)
+    if not m:
+        # 未找到 pinned_categories，在 title 行后插入
+        html = re.sub(
+            r"(title:.*\n)",
+            rf'\1pinned_categories: ["{project_slug}"]\n',
+            html,
+            count=1,
+        )
+    else:
+        existing = m.group(2)
+        slugs = [s.strip().strip('"\'') for s in existing.split(",") if s.strip()]
+        if project_slug in slugs:
+            return  # 已存在
+        slugs.append(project_slug)
+        new_slugs = ", ".join(f'"{s}"' for s in slugs)
+        html = pinned_re.sub(rf"\1{new_slugs}\3", html)
+
+    try:
+        index_path.write_text(html, encoding="utf-8")
+    except (IOError, OSError) as e:
+        logger.warning(f"无法更新 pinned_categories: {e}")
+
+
 def add_project_card(
     project_slug: str,
     kb_dir: Path,
@@ -533,6 +565,9 @@ def add_project_card(
     except (IOError, OSError) as e:
         logger.error(f"无法写入 {index_path}: {e}")
         return False
+
+    # 同步 pinned_categories
+    _sync_pinned_categories(index_path, project_slug)
 
     logger.info(
         f"  [首页卡片] 添加 \"{display_name}\""
