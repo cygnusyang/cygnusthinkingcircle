@@ -37,6 +37,9 @@ python tools/make.py publish
 | `make.py build article.md` | 生成博客 + 所有平台 |
 | `make.py build --all` | 生成所有文章 |
 | `make.py build --platform xh,zhihu article.md` | 只生成指定平台 |
+| `make.py collection list` | 列出所有可用项目集合 |
+| `make.py collection build <项目>` | 批量转换项目为 Hugo Pages |
+| `make.py collection build --all` | 构建所有项目集合 |
 | `make.py publish` | 推送博客到 GitHub Pages |
 | `make.py status` | 查看文章和输出状态 |
 | `make.py config` | 查看当前配置 |
@@ -83,3 +86,76 @@ knowledge-base/article.md          ← 你写的源文章
 ```
 
 每个平台的改写策略在 `tools/prompts/` 中独立管理，修改策略不需要改代码。
+
+## 项目集合工具
+
+将 `knowledge-base/articles/` 下的项目目录批量转换为 Hugo GitHub Pages。
+
+```bash
+# 列出所有可用的项目集合
+python tools/make.py collection list
+
+# 构建单个项目
+python tools/make.py collection build openclaw
+python tools/make.py collection build gstack
+
+# 构建所有项目
+python tools/make.py collection build --all
+
+# 指定源子目录（非 blog/ 的情况）
+python tools/make.py collection build gstack --source blog/chapters
+
+# 指定发布日期
+python tools/make.py collection build gbrain --date 2026-05-01
+```
+
+**工作流程：**
+```
+knowledge-base/articles/02-gstack/blog/chapters/*.md
+        │
+        ├── 解析 frontmatter（或提取 # 标题）
+        ├── 生成 Hugo frontmatter（collections, weight, tags）
+        ├── 自动编号（从文件名 01-xxx.md 提取）
+        │
+        ▼
+cygnusyang.github.io/content/posts/gstack/
+        ├── _index.md
+        ├── 2026-04-18-第01章-xxx.md
+        └── ...
+```
+
+项目目录按 `NN-projectname/` 命名约定自动发现，无需手动配置映射表。
+
+## 访问统计
+
+网站已配置 **百度统计** + Google Analytics 4 双重统计。
+
+### 本地验证百度统计
+
+```bash
+cd cygnusyang.github.io
+hugo server
+# 访问 http://localhost:1313
+# 打开浏览器开发者工具 → Network 面板
+# 查找 hm.baidu.com/hm.gif 请求，确认状态码 200
+```
+
+### 线上验证
+
+1. 访问 [百度统计后台](https://tongji.baidu.com/) → 实时访客
+2. 打开你的网站 `https://cygnusyang.github.io/`
+3. 刷新百度统计页面，应能看到实时访问记录
+
+### 配置
+
+```toml
+# cygnusyang.github.io/hugo.toml
+[params.analytics]
+  enable = true
+  [params.analytics.baidu]
+    id = "ca9a2cee6f2d47d57d75201cf14c2e15"  # 百度统计 ID
+  [params.analytics.google]
+    id = ""  # Google Analytics 4 ID（可选）
+```
+
+> **注意：** 百度统计在国内网络环境下稳定，Google Analytics 4 在国内可能加载较慢或失败。建议优先使用百度统计查看国内用户数据。

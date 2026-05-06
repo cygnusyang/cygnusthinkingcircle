@@ -38,6 +38,7 @@ from tools.lib.platforms import (
 )
 from tools.lib.publisher import publish_to_blog, save_platform_output
 from tools.lib.llm import adapt_for_platform
+from tools.lib.collection import build_collection, list_projects
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -292,6 +293,51 @@ def cmd_status(args: argparse.Namespace) -> None:
         logger.info(f"\n博客 (content/posts/): {len(post_files)} 篇")
 
 
+def cmd_collection(args: argparse.Namespace) -> None:
+    """管理知识库项目集合 —— 批量转换为 Hugo Pages"""
+    if args.collection_command == "list":
+        projects = list_projects(KB_DIR)
+        if not projects:
+            logger.info("knowledge-base/articles/ 中没有项目目录。")
+            return
+
+        logger.info("=" * 60)
+        logger.info("📚 可用项目集合")
+        logger.info("=" * 60)
+        for slug, info in projects.items():
+            status = f"{info['article_count']} 篇文章" if info["has_blog"] else "无 blog 目录"
+            logger.info(f"  {slug:25s}  {status}")
+
+    elif args.collection_command == "build":
+        if args.all:
+            projects = list_projects(KB_DIR)
+            slugs = [s for s, i in projects.items() if i["has_blog"]]
+            if not slugs:
+                logger.error("没有可构建的项目（需要有 blog 子目录）。")
+                return
+            logger.info(f"构建所有项目: {', '.join(slugs)}")
+        elif args.project:
+            slugs = [args.project]
+        else:
+            logger.error("请指定项目名或使用 --all")
+            return
+
+        total = 0
+        for slug in slugs:
+            logger.info(f"\n📦 构建集合: {slug}")
+            count = build_collection(
+                project_slug=slug,
+                kb_dir=KB_DIR,
+                content_dir=CONTENT_DIR,
+                source_subdir=args.source or "blog",
+                date=args.date,
+            )
+            total += count
+
+        logger.info(f"\n✅ 完成：生成了 {total} 篇文章到 {CONTENT_DIR / 'posts'}")
+        logger.info("💡 下一步: make.py publish  # 发布到 GitHub Pages")
+
+
 def cmd_config(args: argparse.Namespace) -> None:
     """查看/设置配置"""
     _load_env()
@@ -365,6 +411,17 @@ def main() -> None:
     parser_publish = subparsers.add_parser("publish", help="发布到 GitHub Pages")
     parser_publish.add_argument("-m", "--message", help="自定义 commit 消息")
 
+    # collection
+    parser_collection = subparsers.add_parser("collection", help="管理项目集合")
+    collection_subs = parser_collection.add_subparsers(dest="collection_command")
+
+    parser_col_list = collection_subs.add_parser("list", help="列出可用项目")
+    parser_col_build = collection_subs.add_parser("build", help="构建集合")
+    parser_col_build.add_argument("project", nargs="?", help="项目标识 (如 gstack, openclaw)")
+    parser_col_build.add_argument("--all", action="store_true", help="构建所有项目")
+    parser_col_build.add_argument("--source", help="源子目录 (默认 blog)")
+    parser_col_build.add_argument("--date", help="发布日期 YYYY-MM-DD (默认今天)")
+
     # status
     subparsers.add_parser("status", help="查看文章状态")
 
@@ -379,6 +436,8 @@ def main() -> None:
         cmd_build(args)
     elif args.command == "publish":
         cmd_publish(args)
+    elif args.command == "collection":
+        cmd_collection(args)
     elif args.command == "status":
         cmd_status(args)
     elif args.command == "config":
