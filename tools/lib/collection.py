@@ -225,6 +225,12 @@ def build_collection(
         (output_dir / "_index.md").write_text(index_content, encoding="utf-8")
         logger.info(f"  [{project_slug}] _index.md")
 
+    # 更新首页卡片：替换"敬请期待"为文章数
+    if count > 0:
+        index_path = content_dir / "_index.md"
+        if index_path.exists():
+            _update_index_cards(index_path, project_slug, count)
+
     return count
 
 
@@ -245,3 +251,291 @@ def list_projects(kb_dir: Path) -> dict[str, dict]:
             "has_blog": blog_dir.exists(),
         }
     return result
+
+
+# 项目 slug → _index.md 卡片 aria-label 映射
+# 用于在构建集合后自动更新首页卡片状态，以及 add-card 时自动推导显示名
+_CARD_ARIA_LABELS: dict[str, str] = {
+    "openclaw": "OpenClaw",
+    "gstack": "GStack",
+    "gbrain": "GBrain",
+    "claudecode": "Claude Code",
+    "codex": "Codex",
+    "mcp": "MCP",
+    "harness": "Harness",
+}
+
+# 已知项目的默认图标映射（emoji）
+_CARD_ICONS: dict[str, str] = {
+    "openclaw": "🤖",
+    "gstack": "📚",
+    "gbrain": "🧠",
+    "claudecode": "⌨️",
+    "codex": "📖",
+    "mcp": "🔌",
+    "harness": "⚙️",
+}
+
+
+def _update_index_cards(index_path: Path, project_slug: str, count: int) -> bool:
+    """更新 _index.md 中对应项目的卡片：替换"敬请期待"为文章数，修正链接。
+
+    通过 aria-label 定位卡片，更新 badge 文字和 href。
+    """
+    if project_slug not in _CARD_ARIA_LABELS:
+        return False
+
+    label = _CARD_ARIA_LABELS[project_slug]
+    html = index_path.read_text(encoding="utf-8")
+
+    # 匹配卡片: <a href="..." class="category-card" aria-label="LABEL">
+    #            <span class="category-card-badge">TEXT</span>
+    card_re = re.compile(
+        r'(<a\s+href=")[^"]*("\s+class="category-card"\s+aria-label="'
+        + re.escape(label)
+        + r'">)\s*(<span\s+class="category-card-badge">)([^<]*)(</span>)'
+    )
+
+    match = card_re.search(html)
+    if not match:
+        return False
+
+    old_badge = match.group(4)
+    if old_badge == f"{count} 篇":
+        return False  # 无需更新
+
+    new_href = f"/posts/{project_slug}/"
+    new_badge = f"{count} 篇"
+
+    # 使用回调函数避免 f-string 中 backreference 的转义问题
+    def _replace(m: re.Match) -> str:
+        return (
+            m.group(1) + new_href + m.group(2) + "\n"
+            + "          " + m.group(3) + new_badge + m.group(5)
+        )
+
+    updated = card_re.sub(_replace, html)
+
+    if updated != html:
+        index_path.write_text(updated, encoding="utf-8")
+        logger.info(f"  [首页卡片] {label}: \"{old_badge}\" → \"{new_badge}\"")
+        return True
+
+    return False
+
+
+def _derive_display_name(slug: str) -> str:
+    """从项目 slug 推导卡片显示名。
+
+    优先查 _CARD_ARIA_LABELS 映射，回退时按连字符分词后首字母大写。
+    """
+    if slug in _CARD_ARIA_LABELS:
+        return _CARD_ARIA_LABELS[slug]
+    words = re.split(r"[-_]", slug)
+    return " ".join(w.capitalize() for w in words)
+
+
+def _derive_card_icon(slug: str) -> str:
+    """获取项目的默认卡片图标。"""
+    return _CARD_ICONS.get(slug, "📦")
+
+
+def _get_project_nn(slug: str, kb_dir: Path) -> int:
+    """获取项目在 knowledge-base 中的 NN- 编号。
+
+    用于卡片排序。非项目卡片返回 99（排末尾）。
+    """
+    projects = _discover_projects(kb_dir)
+    if slug not in projects:
+        return 99
+    dirname = projects[slug].name  # e.g. "02-gstack"
+    m = re.match(r"^(\d{2})-", dirname)
+    return int(m.group(1)) if m else 99
+
+
+def _parse_cards_section(html: str) -> tuple[str, list[str], str]:
+    """解析 _index.md 中 category-cards 区域。
+
+    使用嵌套计数正确匹配 </div>，避免卡片内部的 <div> 干扰。
+
+    Returns:
+        (before, cards_list, after)
+        before: 从文件开头到 category-cards 开标签末尾的内容
+        cards_list: 每张卡片的完整 HTML 块
+        after: 从 category-cards 闭标签开始到文件末尾的内容
+    """
+    start_tag = '<div class="category-cards">'
+    end_tag = '</div>'
+
+    start_idx = html.find(start_tag)
+    if start_idx == -1:
+        return "", [], ""
+
+    inner_start = start_idx + len(start_tag)
+
+    # 计数嵌套 div 以找到匹配的 </div>
+    depth = 1
+    pos = inner_start
+    inner_end = -1
+    while depth > 0:
+        next_open = html.find("<div", pos)
+        next_close = html.find(end_tag, pos)
+        if next_close == -1:
+            break
+        if next_open != -1 and next_open < next_close:
+            depth += 1
+            pos = next_open + 4
+        else:
+            depth -= 1
+            if depth == 0:
+                inner_end = next_close
+                break
+            pos = next_close + len(end_tag)
+
+    if inner_end == -1:
+        logger.warning("category-cards 区域缺少匹配的 </div>，跳过处理")
+        return "", [], ""
+
+    before = html[:inner_start]
+    inner = html[inner_start:inner_end]
+    after = html[inner_end:]
+
+    # 从 inner 中提取卡片: <a ... class="category-card" ...>...</a>
+    card_re = re.compile(
+        r"<a\s[^>]*class=\"category-card\"[^>]*>.*?</a>", re.DOTALL
+    )
+    cards = card_re.findall(inner)
+
+    return before, cards, after
+
+
+def _card_sort_key(card_html: str, kb_dir: Path) -> tuple[int, str]:
+    """从卡片 HTML 中提取排序键：(NN编号, aria-label小写)。"""
+    # 提取 aria-label
+    label_m = re.search(r'aria-label="([^"]*)"', card_html)
+    label = label_m.group(1) if label_m else ""
+
+    # 反查 aria-label → slug
+    reverse_map: dict[str, str] = {v: k for k, v in _CARD_ARIA_LABELS.items()}
+
+    slug = None
+    if label in reverse_map:
+        slug = reverse_map[label]
+    else:
+        # 尝试直接匹配 knowledge-base 项目 slug
+        slug_candidate = label.lower().replace(" ", "-")
+        projects = _discover_projects(kb_dir)
+        if slug_candidate in projects:
+            slug = slug_candidate
+
+    nn = _get_project_nn(slug, kb_dir) if slug else 99
+    return (nn, label.lower())
+
+
+def _resort_cards(index_path: Path, kb_dir: Path) -> None:
+    """重新排序 _index.md 中所有 category 卡片。
+
+    按 (NN项目编号, aria-label字母序) 升序排列。
+    """
+    html = index_path.read_text(encoding="utf-8")
+    before, cards, after = _parse_cards_section(html)
+
+    if not cards:
+        return
+
+    original = cards[:]
+    cards.sort(key=lambda c: _card_sort_key(c, kb_dir))
+
+    if cards == original:
+        return
+
+    # 重建整个文件
+    inner_text = "\n\n".join(cards)
+    new_html = before.rstrip("\n") + "\n" + inner_text + "\n" + after.lstrip("\n")
+    try:
+        index_path.write_text(new_html, encoding="utf-8")
+    except (IOError, OSError) as e:
+        logger.error(f"无法写入 {index_path}: {e}")
+        return
+    logger.info("  [首页卡片] 已重新排序")
+
+
+def _card_exists(html: str, label: str) -> bool:
+    """检查 _index.md 中是否已存在指定 aria-label 的卡片。"""
+    return f'aria-label="{label}"' in html
+
+
+def add_project_card(
+    project_slug: str,
+    kb_dir: Path,
+    content_dir: Path,
+    icon: str | None = None,
+    description: str | None = None,
+) -> bool:
+    """向 _index.md 添加一张"敬请期待"风格的新卡片。
+
+    Args:
+        project_slug: 项目标识 (如 "harness", "newproject")
+        kb_dir: knowledge-base 根目录
+        content_dir: Hugo content 目录
+        icon: 卡片图标 emoji (默认自动推导)
+        description: 卡片描述文字 (默认 "技术文档与开发指南")
+
+    Returns:
+        True 如果添加成功或已存在
+    """
+    index_path = content_dir / "_index.md"
+    if not index_path.exists():
+        logger.error(f"首页文件不存在: {index_path}")
+        return False
+
+    display_name = _derive_display_name(project_slug)
+    card_icon = icon or _derive_card_icon(project_slug)
+    card_desc = description or "技术文档与开发指南"
+
+    html = index_path.read_text(encoding="utf-8")
+
+    # 检查卡片是否已存在
+    if _card_exists(html, display_name):
+        logger.info(f"  [首页卡片] \"{display_name}\" 已存在，跳过添加")
+        return True
+
+    # 获取项目 NN- 编号
+    nn = _get_project_nn(project_slug, kb_dir)
+
+    # 生成新卡片 HTML（与现有敬请期待卡片风格一致）
+    new_card = (
+        f'<a href="/posts/{project_slug}/" class="category-card"'
+        f' aria-label="{display_name}">\n'
+        f'    <span class="category-card-badge">敬请期待</span>\n'
+        f'    <div class="category-card-icon">{card_icon}</div>\n'
+        f'    <h3 class="category-card-title">{display_name}</h3>\n'
+        f'    <p class="category-card-desc">{card_desc}</p>\n'
+        f'  </a>'
+    )
+
+    # 解析现有卡片区域
+    before, cards, after = _parse_cards_section(html)
+    if not cards and not before:
+        logger.error("未找到 category-cards 区域")
+        return False
+
+    # 插入新卡片
+    cards.append(new_card)
+
+    # 按 NN-编号 + 字母序重排
+    cards.sort(key=lambda c: _card_sort_key(c, kb_dir))
+
+    inner_text = "\n\n".join(cards)
+    new_html = before.rstrip("\n") + "\n" + inner_text + "\n" + after.lstrip("\n")
+    try:
+        index_path.write_text(new_html, encoding="utf-8")
+    except (IOError, OSError) as e:
+        logger.error(f"无法写入 {index_path}: {e}")
+        return False
+
+    logger.info(
+        f"  [首页卡片] 添加 \"{display_name}\""
+        f" (icon={card_icon}, NN={nn:02d})"
+    )
+    return True

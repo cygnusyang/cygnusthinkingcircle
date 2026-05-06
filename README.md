@@ -40,6 +40,7 @@ python tools/make.py publish
 | `make.py collection list` | 列出所有可用项目集合 |
 | `make.py collection build <项目>` | 批量转换项目为 Hugo Pages |
 | `make.py collection build --all` | 构建所有项目集合 |
+| `make.py collection add-card <项目>` | 添加首页"敬请期待"卡片 |
 | `make.py publish` | 推送博客到 GitHub Pages |
 | `make.py status` | 查看文章和输出状态 |
 | `make.py config` | 查看当前配置 |
