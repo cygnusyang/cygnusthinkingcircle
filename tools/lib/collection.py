@@ -227,6 +227,7 @@ def build_collection(
     static_dir = base_dir / "cygnusyang.github.io" / "static"
 
     count = 0
+    chapter_counter = 0
     for file_path in md_files:
         try:
             content = file_path.read_text(encoding="utf-8")
@@ -256,7 +257,8 @@ def build_collection(
 
         summary = metadata.get("summary", "") or metadata.get("excerpt", "")
 
-        chapter_num = _extract_chapter_number(file_path.name)
+        # 全局连续编号：避免不同子目录下文件都有 "01-" 前缀导致章节号重复
+        chapter_counter += 1
         category = _derive_category(file_path, source_dir)
 
         # 生成 Hugo frontmatter
@@ -264,14 +266,14 @@ def build_collection(
             title=title,
             date=file_date,
             collection=project_slug,
-            weight=chapter_num or count + 1,
+            weight=chapter_counter,
             category=category,
             tags=tags,
             summary=summary,
         )
 
         # 生成文件名
-        ch_prefix = f"第{chapter_num:02d}章-" if chapter_num else ""
+        ch_prefix = f"第{chapter_counter:02d}章-"
         safe_title = _sanitize_filename_part(title)
         filename = f"{file_date}-{ch_prefix}{safe_title}.md"
 
