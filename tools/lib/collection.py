@@ -12,29 +12,68 @@ from .publisher import process_local_images
 logger = logging.getLogger(__name__)
 
 
+def _has_articles(project_dir: Path, max_depth: int = 2) -> bool:
+    """检查目录下是否有可发布的 .md 文章（限制扫描深度，避免误包含子项目）。"""
+    exclude = {"README.md", "TODO.md", "CLAUDE.md", "_index.md"}
+    for f in project_dir.rglob("*.md"):
+        if f.name in exclude:
+            continue
+        if len(f.relative_to(project_dir).parts) <= max_depth:
+            return True
+    return False
+
+
 def _discover_projects(kb_dir: Path) -> dict[str, Path]:
     """扫描 knowledge-base/articles/ 下的项目目录。
 
-    匹配 NN-projectname/ 格式的目录，只有当该目录下存在 blog/ 子目录时，
-    才将其识别为项目集合。返回 {slug: path} 映射，slug 为去掉 NN- 前缀后的项目名。
-    递归扫描所有层级，支持嵌套项目结构。
+    识别规则：
+    1. 目录名以 NN- 开头
+    2. 满足以下任一条件：a) 包含 blog/ 子目录  b) 包含可发布的 .md 文章
+    3. 按深度从浅到深处理，已识别项目的子目录自动排除
+
+    返回 {slug: path} 映射，slug 为去掉所有 NN- 前缀后的完整相对路径。
     """
     articles_dir = kb_dir / "articles"
     if not articles_dir.exists():
         return {}
 
+    # 收集所有 NN- 目录，按深度从浅到深排序
+    candidates = []
+    for entry in articles_dir.rglob("*"):
+        if entry.is_dir() and re.match(r"^\d{2}-", entry.name):
+            rel = entry.relative_to(articles_dir)
+            candidates.append((len(rel.parts), entry))
+    candidates.sort(key=lambda x: x[0])  # shallow first
+
     projects: dict[str, Path] = {}
-    # 递归扫描所有目录
-    for entry in sorted(articles_dir.rglob("*")):
-        if not entry.is_dir():
+    project_paths: set[Path] = set()
+
+    for _depth, entry in candidates:
+        # 跳过已识别项目的子目录
+        if any(str(entry).startswith(str(p) + "/") for p in project_paths):
             continue
-        m = re.match(r"^\d{2}-(.+)", entry.name)
-        if m:
-            # 只有包含 blog/ 子目录的才是项目集合
-            blog_dir = entry / "blog"
-            if blog_dir.exists() and blog_dir.is_dir():
-                slug = m.group(1)
-                projects[slug] = entry
+
+        has_blog = (entry / "blog").is_dir()
+        has_md = _has_articles(entry) if not has_blog else True
+
+        if not has_blog and not has_md:
+            continue
+
+        project_paths.add(entry)
+
+        # 生成 slug：完整相对路径，每个部分都去掉 NN- 前缀
+        rel_path = entry.relative_to(articles_dir)
+        parts = list(rel_path.parts)
+        slug_parts = []
+        for part in parts:
+            m = re.match(r"^\d{2}-(.+)", part)
+            if m:
+                slug_parts.append(m.group(1))
+            else:
+                slug_parts.append(part)
+        slug = "/".join(slug_parts)
+        projects[slug] = entry
+
     return projects
 
 
@@ -163,11 +202,14 @@ def build_collection(
         return 0
 
     project_dir = projects[project_slug]
+    # 自动探测源目录：先试 source_subdir，不存在则回退到项目根目录
     source_dir = project_dir / source_subdir
-
     if not source_dir.exists():
-        logger.error(f"源目录不存在: {source_dir}")
-        return 0
+        if source_subdir == "blog":
+            source_dir = project_dir
+        else:
+            logger.error(f"源目录不存在: {source_dir}")
+            return 0
 
     md_files = _find_markdown_files(source_dir)
     if not md_files:
@@ -261,33 +303,111 @@ def build_collection(
     return count
 
 
+def normalize_slug(input_slug: str) -> str:
+    """规范化 slug：去掉所有路径分段的 NN- 前缀。
+
+    支持：
+    - 裸slug: "电机控制" → "电机控制"
+    - 完整路径带NN: "05-工程那些事/01-电机控制" → "工程那些事/电机控制"
+    - 混合: "工程那些事/01-电机控制" → "工程那些事/电机控制"
+    """
+    parts = input_slug.split("/")
+    normalized_parts = []
+    for part in parts:
+        m = re.match(r"^\d{2}-(.+)", part)
+        if m:
+            normalized_parts.append(m.group(1))
+        else:
+            normalized_parts.append(part)
+    return "/".join(normalized_parts)
+
+
 def list_projects(kb_dir: Path) -> dict[str, dict]:
     """列出所有可用项目及其统计信息。
 
     Returns:
-        {slug: {path, article_count, has_blog, nn, display_path}}
+        {slug: {path, article_count, nn, display_path}}
     """
     articles_dir = kb_dir / "articles"
     projects = _discover_projects(kb_dir)
     result = {}
     for slug, path in projects.items():
-        blog_dir = path / "blog"
-        md_count = len(_find_markdown_files(blog_dir)) if blog_dir.exists() else 0
-        # 提取 NN 编号
-        m = re.match(r"^(\d{2})-.+", path.name)
-        nn = int(m.group(1)) if m else 99
-        # 生成显示路径：相对于 articles_dir 的完整路径
-        # 保持各目录的原始名称（包括 NN- 前缀）
+        # 有 blog/ 的项目文章在 blog/ 下，其余的项目文章在项目根目录下
+        source_dir = path / "blog" if (path / "blog").is_dir() else path
+        md_files = _find_markdown_files(source_dir)
+        md_count = len(md_files)
+        # 提取路径各级的 NN 编号
         rel_path = path.relative_to(articles_dir)
-        display_path = str(rel_path).replace("NN-", "") if rel_path else path.name
+        parts = list(rel_path.parts)
+        nn_chain = []
+        for part in parts:
+            m = re.match(r"^(\d{2})-(.+)", part)
+            if m:
+                nn_chain.append((int(m.group(1)), m.group(2)))
+            else:
+                nn_chain.append((99, part))
+        # nn 用于排序：嵌套项目取顶层 NN，单层项目取自身 NN
+        nn = nn_chain[0][0]
+        # 显示路径：所有项目都带 NN 前缀，单层项目显示 NN-项目名；嵌套项目显示 PP-CC-项目名
+        nn_str = "-".join(f"{n:02d}" for n, _ in nn_chain)
+        display_path = f"{nn_str}-{nn_chain[-1][1]}"
         result[slug] = {
             "path": path,
             "article_count": md_count,
-            "has_blog": blog_dir.exists(),
             "nn": nn,
-            "display_path": str(rel_path),
+            "display_path": display_path,
         }
     return result
+
+
+def resolve_project_by_input(user_input: str, kb_dir: Path) -> Optional[str]:
+    """从用户输入解析为项目 slug。
+
+    支持多种输入格式：
+    - 带 NN 前缀的显示名: "01-openclaw", "04-01-电机控制"
+    - 裸 slug: "openclaw", "工程那些事/电机控制"
+    - 部分匹配: "电机控制"
+
+    Returns:
+        匹配到的项目 slug，未找到返回 None
+    """
+    projects = _discover_projects(kb_dir)
+
+    # 1. 精确匹配 slug
+    normalized = normalize_slug(user_input)
+    if normalized in projects:
+        return normalized
+
+    # 2. 构建 display_path → slug 映射，尝试精确匹配
+    for slug in projects:
+        rel_path = projects[slug].relative_to(kb_dir / "articles")
+        parts = list(rel_path.parts)
+        nn_chain = []
+        for part in parts:
+            m = re.match(r"^(\d{2})-(.+)", part)
+            if m:
+                nn_chain.append((int(m.group(1)), m.group(2)))
+            else:
+                nn_chain.append((99, part))
+        nn_str = "-".join(f"{n:02d}" for n, _ in nn_chain)
+        display_path = f"{nn_str}-{nn_chain[-1][1]}"
+        if display_path == user_input:
+            return slug
+
+    # 3. 部分匹配：用户输入匹配 slug 最后一段或 display_path 最后一段
+    user_lower = user_input.lower()
+    candidates = []
+    for slug in projects:
+        last_segment = slug.split("/")[-1].lower()
+        if user_lower in last_segment or last_segment in user_lower:
+            candidates.append(slug)
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        logger.error(f"匹配到多个项目: {', '.join(candidates)}，请使用更精确的名称")
+        return None
+
+    return None
 
 
 # 项目 slug → _index.md 卡片 aria-label 映射

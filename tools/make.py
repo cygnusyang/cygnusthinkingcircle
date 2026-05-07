@@ -38,7 +38,7 @@ from tools.lib.platforms import (
 )
 from tools.lib.publisher import publish_to_blog, save_platform_output
 from tools.lib.llm import adapt_for_platform
-from tools.lib.collection import build_collection, list_projects, add_project_card
+from tools.lib.collection import build_collection, list_projects, add_project_card, normalize_slug, resolve_project_by_input
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -309,19 +309,31 @@ def cmd_collection(args: argparse.Namespace) -> None:
         sorted_items = sorted(projects.items(), key=lambda x: (x[1]["nn"], x[1]["display_path"]))
         max_len = max(len(info["display_path"]) for _, info in sorted_items) if sorted_items else 30
         for slug, info in sorted_items:
-            status = f"{info['article_count']} 篇文章" if info["has_blog"] else "无 blog 目录"
+            status = f"{info['article_count']} 篇文章" if info["article_count"] > 0 else "无文章"
             logger.info(f"  {info['display_path']:{max_len}s}  {status}")
 
     elif args.collection_command == "build":
         if args.all:
             projects = list_projects(KB_DIR)
-            slugs = [s for s, i in projects.items() if i["has_blog"]]
+            slugs = [s for s, i in projects.items() if i["article_count"] > 0]
             if not slugs:
                 logger.error("没有可构建的项目（需要有 blog 子目录）。")
                 return
             logger.info(f"构建所有项目: {', '.join(slugs)}")
         elif args.project:
-            slugs = [args.project]
+            # 从用户输入解析项目 slug（支持带 NN 前缀、裸 slug、部分匹配）
+            resolved = resolve_project_by_input(args.project, KB_DIR)
+            if resolved:
+                slugs = [resolved]
+            else:
+                logger.error(f"项目不存在: {args.project}")
+                projects = list_projects(KB_DIR)
+                logger.info("可用项目:")
+                sorted_items = sorted(projects.items(), key=lambda x: (x[1]["nn"], x[1]["display_path"]))
+                for slug, info in sorted_items:
+                    if info["article_count"] > 0:
+                        logger.info(f"  {info['display_path']} ({info['article_count']} 篇)")
+                return
         else:
             logger.error("请指定项目名或使用 --all")
             return
