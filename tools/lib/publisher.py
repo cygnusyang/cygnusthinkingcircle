@@ -1,5 +1,6 @@
 """发布模块 —— 将生成的内容发布到 GitHub Pages"""
 
+import re
 import shutil
 import logging
 from pathlib import Path
@@ -7,6 +8,27 @@ from pathlib import Path
 from .article import Article, generate_hugo_frontmatter
 
 logger = logging.getLogger(__name__)
+
+
+def _remove_title_from_body(body: str, title: str) -> str:
+    """移除正文开头的标题行（frontmatter已有标题）
+
+    Args:
+        body: 正文内容
+        title: 文章标题（用于匹配）
+
+    Returns:
+        移除标题后的正文
+    """
+    lines = body.split("\n")
+    if not lines:
+        return body
+
+    first_line = lines[0].strip()
+    if first_line.startswith("# "):
+        # 移除 # 开头的标题行
+        body = "\n".join(lines[1:]).lstrip("\n")
+    return body
 
 
 def publish_to_blog(
@@ -25,9 +47,10 @@ def publish_to_blog(
     posts_dir = content_dir / "posts"
     posts_dir.mkdir(parents=True, exist_ok=True)
 
-    # 生成 frontmatter + 正文
+    # 生成 frontmatter + 正文（移除正文开头的标题）
     frontmatter = generate_hugo_frontmatter(article)
-    full_content = f"{frontmatter}\n\n{article.body}\n"
+    body = _remove_title_from_body(article.body, article.title)
+    full_content = f"{frontmatter}\n\n{body}\n"
 
     output_path = posts_dir / article.filename
     try:
