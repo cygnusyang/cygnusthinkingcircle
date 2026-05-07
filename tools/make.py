@@ -305,9 +305,12 @@ def cmd_collection(args: argparse.Namespace) -> None:
         logger.info("=" * 60)
         logger.info("📚 可用项目集合")
         logger.info("=" * 60)
-        for slug, info in projects.items():
+        # 按 NN 编号排序（主要按编号，编号相同按路径字母序）
+        sorted_items = sorted(projects.items(), key=lambda x: (x[1]["nn"], x[1]["display_path"]))
+        max_len = max(len(info["display_path"]) for _, info in sorted_items) if sorted_items else 30
+        for slug, info in sorted_items:
             status = f"{info['article_count']} 篇文章" if info["has_blog"] else "无 blog 目录"
-            logger.info(f"  {slug:25s}  {status}")
+            logger.info(f"  {info['display_path']:{max_len}s}  {status}")
 
     elif args.collection_command == "build":
         if args.all:

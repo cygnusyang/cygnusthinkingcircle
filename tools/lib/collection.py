@@ -15,20 +15,26 @@ logger = logging.getLogger(__name__)
 def _discover_projects(kb_dir: Path) -> dict[str, Path]:
     """扫描 knowledge-base/articles/ 下的项目目录。
 
-    匹配 NN-projectname/ 格式的目录，返回 {slug: path} 映射。
-    slug 为去掉 NN- 前缀后的项目名。
+    匹配 NN-projectname/ 格式的目录，只有当该目录下存在 blog/ 子目录时，
+    才将其识别为项目集合。返回 {slug: path} 映射，slug 为去掉 NN- 前缀后的项目名。
+    递归扫描所有层级，支持嵌套项目结构。
     """
     articles_dir = kb_dir / "articles"
     if not articles_dir.exists():
         return {}
 
     projects: dict[str, Path] = {}
-    for entry in sorted(articles_dir.iterdir()):
+    # 递归扫描所有目录
+    for entry in sorted(articles_dir.rglob("*")):
         if not entry.is_dir():
             continue
         m = re.match(r"^\d{2}-(.+)", entry.name)
         if m:
-            projects[m.group(1)] = entry
+            # 只有包含 blog/ 子目录的才是项目集合
+            blog_dir = entry / "blog"
+            if blog_dir.exists() and blog_dir.is_dir():
+                slug = m.group(1)
+                projects[slug] = entry
     return projects
 
 
@@ -259,17 +265,27 @@ def list_projects(kb_dir: Path) -> dict[str, dict]:
     """列出所有可用项目及其统计信息。
 
     Returns:
-        {slug: {path, article_count, has_blog}}
+        {slug: {path, article_count, has_blog, nn, display_path}}
     """
+    articles_dir = kb_dir / "articles"
     projects = _discover_projects(kb_dir)
     result = {}
     for slug, path in projects.items():
         blog_dir = path / "blog"
         md_count = len(_find_markdown_files(blog_dir)) if blog_dir.exists() else 0
+        # 提取 NN 编号
+        m = re.match(r"^(\d{2})-.+", path.name)
+        nn = int(m.group(1)) if m else 99
+        # 生成显示路径：相对于 articles_dir 的完整路径
+        # 保持各目录的原始名称（包括 NN- 前缀）
+        rel_path = path.relative_to(articles_dir)
+        display_path = str(rel_path).replace("NN-", "") if rel_path else path.name
         result[slug] = {
             "path": path,
             "article_count": md_count,
             "has_blog": blog_dir.exists(),
+            "nn": nn,
+            "display_path": str(rel_path),
         }
     return result
 
