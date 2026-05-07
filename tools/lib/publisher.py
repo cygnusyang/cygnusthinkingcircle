@@ -1,5 +1,6 @@
 """发布模块 —— 将生成的内容发布到 GitHub Pages"""
 
+import re
 import shutil
 import logging
 import hashlib
@@ -76,6 +77,27 @@ def process_local_images(
     return processed
 
 
+def _remove_title_from_body(body: str, title: str) -> str:
+    """移除正文开头的标题行（frontmatter已有标题）
+
+    Args:
+        body: 正文内容
+        title: 文章标题（用于匹配）
+
+    Returns:
+        移除标题后的正文
+    """
+    lines = body.split("\n")
+    if not lines:
+        return body
+
+    first_line = lines[0].strip()
+    if first_line.startswith("# "):
+        # 移除 # 开头的标题行
+        body = "\n".join(lines[1:]).lstrip("\n")
+    return body
+
+
 def publish_to_blog(
     article: Article,
     kb_dir: Path,
@@ -129,9 +151,12 @@ draft: false
             except IOError as e:
                 logger.warning(f"  生成分类索引失败: {e}")
 
-    # 生成 frontmatter + 正文
+    # 生成 frontmatter + 正文（移除正文开头的标题，处理本地图片）
     frontmatter = generate_hugo_frontmatter(article)
-    full_content = f"{frontmatter}\n\n{processed_body}\n"
+    # 先处理本地图片，然后移除标题行
+    body_after_image = process_local_images(article.body, article.file_path, static_dir)
+    body = _remove_title_from_body(body_after_image, article.title)
+    full_content = f"{frontmatter}\n\n{body}\n"
 
     try:
         output_path.write_text(full_content, encoding="utf-8")
