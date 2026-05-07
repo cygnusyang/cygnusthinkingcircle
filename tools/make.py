@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).parent.parent
 KB_DIR = BASE_DIR / "knowledge-base"
 CONTENT_DIR = BASE_DIR / "cygnusyang.github.io" / "content"
+STATIC_DIR = BASE_DIR / "cygnusyang.github.io" / "static"
 OUTPUT_DIR = TOOLS_DIR / "output"
 PROMPTS_DIR = TOOLS_DIR / "prompts"
 ENV_FILE = BASE_DIR / ".env"
@@ -170,7 +171,7 @@ def cmd_build(args: argparse.Namespace) -> None:
 
         # 1. 生成博客版本（直接发布）
         for bp in blog_platforms:
-            publish_to_blog(article, CONTENT_DIR)
+            publish_to_blog(article, KB_DIR, CONTENT_DIR, STATIC_DIR)
 
         # 2. 生成其他平台版本（LLM 适配）
         if non_blog_platforms:

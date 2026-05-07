@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from .article import parse_frontmatter
+from .publisher import process_local_images
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +51,15 @@ def _extract_chapter_number(filename: str) -> int:
     return 0
 
 
-def _extract_title_from_body(body: str) -> Optional[str]:
-    """从正文提取第一个一级标题作为标题。"""
-    m = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
-    if m:
-        return m.group(1).strip()
-    return None
+def _extract_title_from_body(body: str) -> Optional[tuple[str, str]]:
+    """从正文提取第一个一级标题作为标题，返回 (title, body_without_title_line)。"""
+    m = re.search(r"^(#\s+.+)$\n?", body, re.MULTILINE)
+    if not m:
+        return None
+    title = m.group(1).lstrip('#').strip()
+    # 去掉标题行，保留剩下的正文
+    body_without_title = body[m.end():].lstrip('\n')
+    return title, body_without_title
 
 
 def _derive_category(file_path: Path, source_dir: Path) -> str:
@@ -105,12 +109,13 @@ def _generate_hugo_frontmatter(
     return "\n".join(lines)
 
 
-def _generate_index_md(title: str, date: str, sort_by: str = "Weight") -> str:
+def _generate_index_md(title: str, date: str, icon: str, sort_by: str = "Weight") -> str:
     """生成 Hugo 集合的 _index.md。"""
     return f"""---
 title: {title}
 date: {date}
 draft: false
+icon: {icon}
 sort_by: {sort_by}
 sort_order: asc
 layout: docs
@@ -169,6 +174,10 @@ def build_collection(
     output_dir = content_dir / "posts" / project_slug
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # static 目录在项目根目录的 static
+    base_dir = kb_dir.parent
+    static_dir = base_dir / "cygnusyang.github.io" / "static"
+
     count = 0
     for file_path in md_files:
         try:
@@ -182,7 +191,14 @@ def build_collection(
 
         title = metadata.get("title", "")
         if not title:
-            title = _extract_title_from_body(body) or file_path.stem
+            extracted = _extract_title_from_body(body)
+            if extracted:
+                title, body = extracted
+            else:
+                title = file_path.stem
+
+        # 处理本地图片，复制到 static 目录并修正链接
+        body = process_local_images(body, file_path, static_dir)
 
         file_date = metadata.get("date", date)
 
@@ -220,16 +236,21 @@ def build_collection(
 
     # 生成 _index.md
     if count > 0:
-        display_name = project_slug.replace("-", " ").title()
-        index_content = _generate_index_md(f"{display_name} 文档", date)
+        nn = _get_project_nn(project_slug, kb_dir)
+        display_name = _derive_display_name(project_slug)
+        titled_display_name = f"{nn:02d}-{display_name} 文档"
+        icon = _derive_card_icon(project_slug)
+        index_content = _generate_index_md(titled_display_name, date, icon)
         (output_dir / "_index.md").write_text(index_content, encoding="utf-8")
         logger.info(f"  [{project_slug}] _index.md")
 
-    # 更新首页卡片：替换"敬请期待"为文章数
+    # 更新首页卡片：替换"敬请期待"为文章数，更新标题带编号
     if count > 0:
         index_path = content_dir / "_index.md"
         if index_path.exists():
-            _update_index_cards(index_path, project_slug, count)
+            _update_index_cards(index_path, project_slug, count, kb_dir)
+            _sync_pinned_categories(index_path, project_slug)
+            _resort_cards(index_path, kb_dir)
 
     return count
 
@@ -263,6 +284,7 @@ _CARD_ARIA_LABELS: dict[str, str] = {
     "codex": "Codex",
     "mcp": "MCP",
     "harness": "Harness",
+    "academic-research-skills": "Academic research skills",
 }
 
 # 已知项目的默认图标映射（emoji）
@@ -274,11 +296,12 @@ _CARD_ICONS: dict[str, str] = {
     "codex": "📖",
     "mcp": "🔌",
     "harness": "⚙️",
+    "academic-research-skills": "🔬",
 }
 
 
-def _update_index_cards(index_path: Path, project_slug: str, count: int) -> bool:
-    """更新 _index.md 中对应项目的卡片：替换"敬请期待"为文章数，修正链接。
+def _update_index_cards(index_path: Path, project_slug: str, count: int, kb_dir: Path) -> bool:
+    """更新 _index.md 中对应项目的卡片：替换"敬请期待"为文章数，修正链接，更新标题带编号。
 
     通过 aria-label 定位卡片，更新 badge 文字和 href。
     """
@@ -286,14 +309,17 @@ def _update_index_cards(index_path: Path, project_slug: str, count: int) -> bool
         return False
 
     label = _CARD_ARIA_LABELS[project_slug]
+    nn = _get_project_nn(project_slug, kb_dir)
     html = index_path.read_text(encoding="utf-8")
 
     # 匹配卡片: <a href="..." class="category-card" aria-label="LABEL">
     #            <span class="category-card-badge">TEXT</span>
+    #            <div ...></div>
+    #            <h3 ...>TITLE</h3>
     card_re = re.compile(
         r'(<a\s+href=")[^"]*("\s+class="category-card"\s+aria-label="'
         + re.escape(label)
-        + r'">)\s*(<span\s+class="category-card-badge">)([^<]*)(</span>)'
+        + r'">)\s*(<span\s+class="category-card-badge">)([^<]*)(</span>)\s*(<div\s+class="category-card-icon">.*?</div>)\s*(<h3\s+class="category-card-title">)([^<]*)(</h3>)'
     )
 
     match = card_re.search(html)
@@ -301,24 +327,34 @@ def _update_index_cards(index_path: Path, project_slug: str, count: int) -> bool
         return False
 
     old_badge = match.group(4)
-    if old_badge == f"{count} 篇":
-        return False  # 无需更新
-
     new_href = f"/posts/{project_slug}/"
     new_badge = f"{count} 篇"
+
+    # 更新标题：添加 NN- 前缀
+    old_title = match.group(8)
+    display_name = label
+    titled_display_name = f"{nn:02d}-{display_name}"
+
+    if old_badge == new_badge and old_title == titled_display_name:
+        return False  # 无需更新
 
     # 使用回调函数避免 f-string 中 backreference 的转义问题
     def _replace(m: re.Match) -> str:
         return (
             m.group(1) + new_href + m.group(2) + "\n"
-            + "          " + m.group(3) + new_badge + m.group(5)
+            + "          " + m.group(3) + new_badge + m.group(5) + "\n"
+            + "      " + m.group(6) + "\n"
+            + "      " + m.group(7) + titled_display_name + m.group(9) + "\n"
         )
 
     updated = card_re.sub(_replace, html)
 
     if updated != html:
         index_path.write_text(updated, encoding="utf-8")
-        logger.info(f"  [首页卡片] {label}: \"{old_badge}\" → \"{new_badge}\"")
+        if old_badge != new_badge:
+            logger.info(f"  [首页卡片] {label}: \"{old_badge}\" → \"{new_badge}\"")
+        if old_title != titled_display_name:
+            logger.info(f"  [首页卡片] {label}: 标题更新 → \"{titled_display_name}\"")
         return True
 
     return False
@@ -535,13 +571,16 @@ def add_project_card(
     # 获取项目 NN- 编号
     nn = _get_project_nn(project_slug, kb_dir)
 
+    # 标题添加 NN- 前缀
+    titled_display_name = f"{nn:02d}-{display_name}"
+
     # 生成新卡片 HTML（与现有敬请期待卡片风格一致）
     new_card = (
         f'<a href="/posts/{project_slug}/" class="category-card"'
         f' aria-label="{display_name}">\n'
         f'    <span class="category-card-badge">敬请期待</span>\n'
         f'    <div class="category-card-icon">{card_icon}</div>\n'
-        f'    <h3 class="category-card-title">{display_name}</h3>\n'
+        f'    <h3 class="category-card-title">{titled_display_name}</h3>\n'
         f'    <p class="category-card-desc">{card_desc}</p>\n'
         f'  </a>'
     )

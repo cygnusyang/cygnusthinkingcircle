@@ -132,10 +132,69 @@ def generate_hugo_frontmatter(article: Article) -> str:
 
 
 def find_articles(kb_dir: Path) -> list[Path]:
-    """查找 knowledge-base 中所有文章（排除 template.md）"""
+    """查找 knowledge-base 中所有文章（排除 template.md 和 README 等）"""
     articles_dir = kb_dir / "articles"
     if not articles_dir.exists():
         return []
-    return sorted(
-        [f for f in articles_dir.glob("*.md") if f.name != "template.md"]
-    )
+
+    exclude = {"template.md", "README.md", "TODO.md", "_index.md"}
+    result = []
+    # 支持多层嵌套分类结构，递归查找所有 .md 文件
+    for f in sorted(articles_dir.rglob("*.md")):
+        if f.name in exclude:
+            continue
+        result.append(f)
+    return result
+
+
+def extract_local_images(body: str, article_path: Path) -> list[tuple[str, str]]:
+    """从文章正文中提取所有本地图片链接。
+
+    返回: [(original_markdown_link, absolute_local_path), ...]
+    只匹配相对路径的本地图片，不匹配完整 URL。
+    """
+    # 匹配 ![...](path) 形式的图片链接
+    # 捕获括号内的路径部分
+    import re
+    # 匹配不以 http:// 或 https:// 开头的路径（即本地相对路径）
+    image_pattern = r'!\[.*?\]\(([^\)][^\)]*)\)'
+    matches = re.findall(image_pattern, body)
+
+    result = []
+    for rel_path in matches:
+        rel_path = rel_path.strip()
+        # 跳过已经是 / 开头的绝对路径链接
+        if rel_path.startswith('/') or rel_path.startswith('http://') or rel_path.startswith('https://'):
+            continue
+        # 构造绝对路径
+        abs_path = article_path.parent / rel_path
+        if abs_path.exists():
+            result.append((rel_path, str(abs_path)))
+    return result
+
+
+def generate_output_path(article_path: Path, kb_dir: Path, content_dir: Path) -> Path:
+    """根据源文件路径生成 Hugo 输出路径。
+
+    支持多层嵌套分类：
+    - knowledge-base/articles/YYYY-MM-DD-title.md → content/posts/YYYY-MM-DD-title.md
+    - knowledge-base/articles/category/YYYY-MM-DD-title.md → content/posts/category/YYYY-MM-DD-title.md
+    - knowledge-base/articles/category/subcategory/YYYY-MM-DD-title.md → content/posts/category/subcategory/YYYY-MM-DD-title.md
+    """
+    articles_dir = kb_dir / "articles"
+    rel_path = article_path.relative_to(articles_dir)
+    return content_dir / "posts" / rel_path
+
+
+def derive_categories(article_path: Path, kb_dir: Path) -> list[str]:
+    """从文件路径推导分类列表。
+
+    knowledge-base/articles/category/sub/article.md → ["category", "sub"]
+    最后一个是文件名，不计入分类。
+    """
+    articles_dir = kb_dir / "articles"
+    rel_path = article_path.relative_to(articles_dir)
+    # 分类是父目录路径
+    parts = list(rel_path.parts[:-1])
+    # 把连字符替换成空格
+    return [p.replace("-", " ").replace("_", " ") for p in parts]
