@@ -322,14 +322,32 @@ def normalize_slug(input_slug: str) -> str:
     return "/".join(normalized_parts)
 
 
-def list_projects(kb_dir: Path) -> dict[str, dict]:
+def list_projects(
+    kb_dir: Path,
+    pages_dir: Optional[Path] = None,
+) -> dict[str, dict]:
     """列出所有可用项目及其统计信息。
 
+    Args:
+        kb_dir: knowledge-base 根目录
+        pages_dir: Hugo Pages 子模块目录（可选，传入后检测是否已推送）
+
     Returns:
-        {slug: {path, article_count, nn, display_path}}
+        {slug: {path, article_count, nn, display_path, pushed_to_pages}}
     """
     articles_dir = kb_dir / "articles"
     projects = _discover_projects(kb_dir)
+
+    # 获取已推送到 Hugo Pages 的项目集合
+    pushed_slugs: set[str] = set()
+    if pages_dir and pages_dir.exists():
+        posts_dir = pages_dir / "content" / "posts"
+        if posts_dir.exists():
+            for entry in posts_dir.iterdir():
+                if entry.is_dir() and (entry / "_index.md").exists():
+                    # 用 directory name 匹配 slug 的最后一段
+                    pushed_slugs.add(entry.name)
+
     result = {}
     for slug, path in projects.items():
         # 有 blog/ 的项目文章在 blog/ 下，其余的项目文章在项目根目录下
@@ -351,11 +369,21 @@ def list_projects(kb_dir: Path) -> dict[str, dict]:
         # 显示路径：所有项目都带 NN 前缀，单层项目显示 NN-项目名；嵌套项目显示 PP-CC-项目名
         nn_str = "-".join(f"{n:02d}" for n, _ in nn_chain)
         display_path = f"{nn_str}-{nn_chain[-1][1]}"
+
+        # 检查是否已推送到 GitHub Pages：嵌套项目检查父级目录，单层项目直接匹配
+        pushed = False
+        if pushed_slugs:
+            slug_parts = slug.split("/")
+            last_part = slug_parts[-1]
+            # 单层项目直接匹配，嵌套项目匹配最后一段
+            pushed = last_part in pushed_slugs
+
         result[slug] = {
             "path": path,
             "article_count": md_count,
             "nn": nn,
             "display_path": display_path,
+            "pushed_to_pages": pushed,
         }
     return result
 

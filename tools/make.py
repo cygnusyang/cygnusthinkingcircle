@@ -51,6 +51,7 @@ STATIC_DIR = BASE_DIR / "cygnusyang.github.io" / "static"
 OUTPUT_DIR = TOOLS_DIR / "output"
 PROMPTS_DIR = TOOLS_DIR / "prompts"
 ENV_FILE = BASE_DIR / ".env"
+PAGES_DIR = BASE_DIR / "cygnusyang.github.io"  # Hugo 子模块目录
 
 
 def _load_env() -> None:
@@ -297,27 +298,30 @@ def cmd_status(args: argparse.Namespace) -> None:
 def cmd_collection(args: argparse.Namespace) -> None:
     """管理知识库项目集合 —— 批量转换为 Hugo Pages"""
     if args.collection_command == "list":
-        projects = list_projects(KB_DIR)
+        projects = list_projects(KB_DIR, PAGES_DIR)
         if not projects:
             logger.info("knowledge-base/articles/ 中没有项目目录。")
             return
 
-        logger.info("=" * 60)
+        logger.info("=" * 70)
         logger.info("📚 可用项目集合")
-        logger.info("=" * 60)
+        logger.info("=" * 70)
+        logger.info(f"  {'项目':<35s}  {'文章':>6s}  {'GitHub Pages'}")
+        logger.info("  " + "-" * 55)
         # 按 NN 编号排序（主要按编号，编号相同按路径字母序）
         sorted_items = sorted(projects.items(), key=lambda x: (x[1]["nn"], x[1]["display_path"]))
         max_len = max(len(info["display_path"]) for _, info in sorted_items) if sorted_items else 30
         for slug, info in sorted_items:
-            status = f"{info['article_count']} 篇文章" if info["article_count"] > 0 else "无文章"
-            logger.info(f"  {info['display_path']:{max_len}s}  {status}")
+            status = f"{info['article_count']} 篇" if info["article_count"] > 0 else "无文章"
+            pages_status = "已推送" if info["pushed_to_pages"] else "未推送"
+            logger.info(f"  {info['display_path']:{max_len}s}  {status:>6s}  {pages_status}")
 
     elif args.collection_command == "build":
         if args.all:
-            projects = list_projects(KB_DIR)
+            projects = list_projects(KB_DIR, PAGES_DIR)
             slugs = [s for s, i in projects.items() if i["article_count"] > 0]
             if not slugs:
-                logger.error("没有可构建的项目（需要有 blog 子目录）。")
+                logger.error("没有可构建的项目。")
                 return
             logger.info(f"构建所有项目: {', '.join(slugs)}")
         elif args.project:
@@ -327,12 +331,13 @@ def cmd_collection(args: argparse.Namespace) -> None:
                 slugs = [resolved]
             else:
                 logger.error(f"项目不存在: {args.project}")
-                projects = list_projects(KB_DIR)
+                projects = list_projects(KB_DIR, PAGES_DIR)
                 logger.info("可用项目:")
                 sorted_items = sorted(projects.items(), key=lambda x: (x[1]["nn"], x[1]["display_path"]))
                 for slug, info in sorted_items:
                     if info["article_count"] > 0:
-                        logger.info(f"  {info['display_path']} ({info['article_count']} 篇)")
+                        pages_mark = "✓" if info["pushed_to_pages"] else "✗"
+                        logger.info(f"  {info['display_path']} ({info['article_count']} 篇) [{pages_mark}]")
                 return
         else:
             logger.error("请指定项目名或使用 --all")
