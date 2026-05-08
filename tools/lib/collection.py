@@ -539,11 +539,17 @@ def _update_index_cards(index_path: Path, project_slug: str, count: int, kb_dir:
 def _derive_display_name(slug: str) -> str:
     """从项目 slug 推导卡片显示名。
 
-    优先查 _CARD_ARIA_LABELS 映射，回退时按连字符分词后首字母大写。
+    优先查 _CARD_ARIA_LABELS 映射。
+    嵌套项目（如 "工程那些事/电机控制"）取最后一段再查映射，
+    无映射时按连字符分词后首字母大写。
     """
     if slug in _CARD_ARIA_LABELS:
         return _CARD_ARIA_LABELS[slug]
-    words = re.split(r"[-_]", slug)
+    # 嵌套项目取最后一段再查映射
+    last_segment = slug.split("/")[-1]
+    if last_segment in _CARD_ARIA_LABELS:
+        return _CARD_ARIA_LABELS[last_segment]
+    words = re.split(r"[-_]", last_segment)
     return " ".join(w.capitalize() for w in words)
 
 
@@ -555,13 +561,17 @@ def _derive_card_icon(slug: str) -> str:
 def _get_project_nn(slug: str, kb_dir: Path) -> int:
     """获取项目在 knowledge-base 中的 NN- 编号。
 
-    用于卡片排序。非项目卡片返回 99（排末尾）。
+    用于卡片排序。嵌套项目取顶层父级编号（如 04-工程那些事/01-电机控制 → 04），
+    单层项目取自身编号。非项目卡片返回 99（排末尾）。
     """
     projects = _discover_projects(kb_dir)
     if slug not in projects:
         return 99
-    dirname = projects[slug].name  # e.g. "02-gstack"
-    m = re.match(r"^(\d{2})-", dirname)
+    project_path = projects[slug]
+    articles_dir = kb_dir / "articles"
+    rel = project_path.relative_to(articles_dir)
+    # 取路径第一段的 NN 编号
+    m = re.match(r"^(\d{2})-", rel.parts[0])
     return int(m.group(1)) if m else 99
 
 

@@ -21,6 +21,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+# Shell completion support (requires: pip install argcomplete)
+try:
+    import argcomplete
+    HAS_ARGCOMPLETE = True
+except ImportError:
+    HAS_ARGCOMPLETE = False
+
 # 确保 tools/ 在 sys.path 中
 TOOLS_DIR = Path(__file__).parent
 sys.path.insert(0, str(TOOLS_DIR.parent))
@@ -426,7 +433,8 @@ def main() -> None:
   make.py status
   make.py config
   make.py collection list
-  make.py collection build gstack
+  make.py collection build 01-openclaw
+  make.py collection build 04-工程那些事/01-电机控制
   make.py collection build --all
   make.py collection add-card harness
   make.py collection add-card myproject --icon "🚀" --desc "项目描述"
@@ -458,7 +466,7 @@ def main() -> None:
 
     parser_col_list = collection_subs.add_parser("list", help="列出可用项目")
     parser_col_build = collection_subs.add_parser("build", help="构建集合")
-    parser_col_build.add_argument("project", nargs="?", help="项目标识 (如 gstack, openclaw)")
+    parser_col_build.add_argument("project", nargs="?", help="项目标识 (如 01-openclaw, 04-工程那些事/01-电机控制)")
     parser_col_build.add_argument("--all", action="store_true", help="构建所有项目")
     parser_col_build.add_argument("--source", help="源子目录 (默认 blog)")
     parser_col_build.add_argument("--date", help="发布日期 YYYY-MM-DD (默认今天)")
@@ -473,6 +481,36 @@ def main() -> None:
 
     # config
     subparsers.add_parser("config", help="查看配置")
+
+    # 注册 shell 补全 (需要 argcomplete: pip install argcomplete)
+    if HAS_ARGCOMPLETE:
+        # 动态补全：项目名、平台名
+        def _complete_project_names(prefix, parsed_args, **kwargs):
+            """补全 collection 命令的项目名"""
+            projects = list_projects(KB_DIR, PAGES_DIR)
+            return [info["display_path"] for _, info in sorted(projects.items(), key=lambda x: (x[1]["nn"], x[1]["display_path"]))]
+
+        def _complete_platform_names(prefix, parsed_args, **kwargs):
+            """补全 build 命令的平台名"""
+            return [p.key for p in list_platforms()]
+
+        def _complete_article_files(prefix, parsed_args, **kwargs):
+            """补全 build 命令的文章文件名"""
+            articles = find_articles(KB_DIR)
+            return [f.name for f in articles]
+
+        # 为相应参数设置补全函数
+        for parser_obj in [parser_col_build, parser_col_add]:
+            for action in parser_obj._actions:
+                if action.dest == "project":
+                    action.completer = _complete_project_names
+        for action in parser_build._actions:
+            if action.dest == "platform":
+                action.completer = _complete_platform_names
+            if action.dest == "article":
+                action.completer = _complete_article_files
+
+        argcomplete.autocomplete(parser)
 
     args = parser.parse_args()
 
