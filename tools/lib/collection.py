@@ -259,11 +259,13 @@ def build_collection(
 
         # 全局连续编号：避免不同子目录下文件都有 "01-" 前缀导致章节号重复
         chapter_counter += 1
+        # title 也带上章节编号，确保 Hugo 渲染时标题有"第NN章"前缀
+        display_title = f"第{chapter_counter:02d}章 {title}"
         category = _derive_category(file_path, source_dir)
 
         # 生成 Hugo frontmatter
         hugo_fm = _generate_hugo_frontmatter(
-            title=title,
+            title=display_title,
             date=file_date,
             collection=project_slug,
             weight=chapter_counter,
