@@ -132,7 +132,7 @@ def generate_hugo_frontmatter(article: Article) -> str:
 
 
 def find_articles(kb_dir: Path) -> list[Path]:
-    """查找 knowledge-base 中所有文章（排除 template.md 和 README 等）"""
+    """查找 knowledge-base 中所有文章（排除 template.md、README 和 collection 项目目录）。"""
     articles_dir = kb_dir / "articles"
     if not articles_dir.exists():
         return []
@@ -142,6 +142,10 @@ def find_articles(kb_dir: Path) -> list[Path]:
     # 支持多层嵌套分类结构，递归查找所有 .md 文件
     for f in sorted(articles_dir.rglob("*.md")):
         if f.name in exclude:
+            continue
+        # 跳过 collection 项目目录（NN- 开头的目录及其子目录下的文件）
+        rel = f.relative_to(articles_dir)
+        if any(p.startswith("NN-") or (len(p) >= 3 and p[:2].isdigit() and p[2] == "-") for p in rel.parts[:-1]):
             continue
         result.append(f)
     return result
