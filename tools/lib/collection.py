@@ -370,9 +370,14 @@ def list_projects(
                 nn_chain.append((99, part))
         # nn 用于排序：嵌套项目取顶层 NN，单层项目取自身 NN
         nn = nn_chain[0][0]
-        # 显示路径：所有项目都带 NN 前缀，单层项目显示 NN-项目名；嵌套项目显示 PP-CC-项目名
-        nn_str = "-".join(f"{n:02d}" for n, _ in nn_chain)
-        display_path = f"{nn_str}-{nn_chain[-1][1]}"
+        # 显示路径：
+        # 单层项目: NN-项目名 (如 01-openclaw)
+        # 嵌套项目: 完整路径，每级带 NN 前缀 (如 04-工程那些事/01-电机控制)
+        if len(parts) == 1:
+            display_path = f"{nn_chain[0][0]:02d}-{nn_chain[0][1]}"
+        else:
+            display_parts = [f"{n:02d}-{name}" for n, name in nn_chain]
+            display_path = "/".join(display_parts)
 
         # 检查是否已推送到 GitHub Pages：嵌套项目检查父级目录，单层项目直接匹配
         pushed = False
@@ -396,7 +401,7 @@ def resolve_project_by_input(user_input: str, kb_dir: Path) -> Optional[str]:
     """从用户输入解析为项目 slug。
 
     支持多种输入格式：
-    - 带 NN 前缀的显示名: "01-openclaw", "04-01-电机控制"
+    - 带 NN 前缀的显示名: "01-openclaw", "04-工程那些事/01-电机控制"
     - 裸 slug: "openclaw", "工程那些事/电机控制"
     - 部分匹配: "电机控制"
 
@@ -405,7 +410,7 @@ def resolve_project_by_input(user_input: str, kb_dir: Path) -> Optional[str]:
     """
     projects = _discover_projects(kb_dir)
 
-    # 1. 精确匹配 slug
+    # 1. 精确匹配 slug（去掉所有 NN- 前缀）
     normalized = normalize_slug(user_input)
     if normalized in projects:
         return normalized
@@ -421,8 +426,11 @@ def resolve_project_by_input(user_input: str, kb_dir: Path) -> Optional[str]:
                 nn_chain.append((int(m.group(1)), m.group(2)))
             else:
                 nn_chain.append((99, part))
-        nn_str = "-".join(f"{n:02d}" for n, _ in nn_chain)
-        display_path = f"{nn_str}-{nn_chain[-1][1]}"
+        if len(parts) == 1:
+            display_path = f"{nn_chain[0][0]:02d}-{nn_chain[0][1]}"
+        else:
+            display_parts = [f"{n:02d}-{name}" for n, name in nn_chain]
+            display_path = "/".join(display_parts)
         if display_path == user_input:
             return slug
 
