@@ -132,21 +132,29 @@ def generate_hugo_frontmatter(article: Article) -> str:
 
 
 def find_articles(kb_dir: Path) -> list[Path]:
-    """查找 knowledge-base 中所有文章（排除 template.md、README 和 collection 项目目录）。"""
+    """查找 knowledge-base 中所有文章（排除 template.md、README 等非文章文件）。
+
+    对于 collection 项目目录（NN- 开头的目录），只处理 blog/ 子目录下的文件，
+    避免误包含源码、文档等其他类型的 .md 文件。
+    """
     articles_dir = kb_dir / "articles"
     if not articles_dir.exists():
         return []
 
     exclude = {"template.md", "README.md", "TODO.md", "_index.md"}
     result = []
-    # 支持多层嵌套分类结构，递归查找所有 .md 文件
     for f in sorted(articles_dir.rglob("*.md")):
         if f.name in exclude:
             continue
-        # 跳过 collection 项目目录（NN- 开头的目录及其子目录下的文件）
         rel = f.relative_to(articles_dir)
-        if any(p.startswith("NN-") or (len(p) >= 3 and p[:2].isdigit() and p[2] == "-") for p in rel.parts[:-1]):
-            continue
+        parent_dirs = rel.parts[:-1]
+        # 检查是否在 collection 项目目录内
+        is_in_collection = any(
+            p.startswith("NN-") or (len(p) >= 3 and p[:2].isdigit() and p[2] == "-")
+            for p in parent_dirs
+        )
+        if is_in_collection and "blog" not in parent_dirs:
+            continue  # 集合目录下只处理 blog/ 内的文件
         result.append(f)
     return result
 
