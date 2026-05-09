@@ -45,7 +45,7 @@ from tools.lib.platforms import (
 )
 from tools.lib.publisher import publish_to_blog, save_platform_output
 from tools.lib.llm import adapt_for_platform
-from tools.lib.collection import build_collection, list_projects, add_project_card, normalize_slug, resolve_project_by_input
+from tools.lib.collection import build_collection, list_projects, normalize_slug, resolve_project_by_input
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -395,21 +395,6 @@ def cmd_collection(args: argparse.Namespace) -> None:
         logger.info(f"\n✅ 完成：生成了 {total} 篇文章到 {CONTENT_DIR / 'posts'}")
         logger.info("💡 下一步: make.py publish  # 发布到 GitHub Pages")
 
-    elif args.collection_command == "add-card":
-        if not args.project:
-            logger.error("请指定项目名")
-            return
-        logger.info(f"\n🃏 添加首页卡片: {args.project}")
-        success = add_project_card(
-            project_slug=args.project,
-            kb_dir=KB_DIR,
-            content_dir=CONTENT_DIR,
-            icon=args.icon,
-            description=args.desc,
-        )
-        if success:
-            logger.info("💡 编辑 _index.md 可自定义图标和描述")
-
 
 def cmd_config(args: argparse.Namespace) -> None:
     """查看/设置配置"""
@@ -467,7 +452,6 @@ def main() -> None:
   make.py collection build 01-openclaw         构建单个集合
   make.py collection build 04-工程那些事/01-电机控制   构建嵌套集合
   make.py collection build --all               构建所有集合
-  make.py collection add-card myproject        添加首页卡片
 
   # 发布与配置
   make.py publish                              发布到 GitHub Pages
@@ -506,11 +490,6 @@ def main() -> None:
     parser_col_build.add_argument("--source", help="源子目录 (默认 blog)")
     parser_col_build.add_argument("--date", help="发布日期 YYYY-MM-DD (默认今天)")
 
-    parser_col_add = collection_subs.add_parser("add-card", help="添加首页卡片")
-    parser_col_add.add_argument("project", help="项目标识 (如 harness, gbrain)")
-    parser_col_add.add_argument("--icon", help="卡片图标 emoji (默认自动推导)")
-    parser_col_add.add_argument("--desc", help="卡片描述文字 (默认 技术文档与开发指南)")
-
     # status
     subparsers.add_parser("status", help="查看文章状态")
 
@@ -535,7 +514,7 @@ def main() -> None:
             return [f.name for f in articles]
 
         # 为相应参数设置补全函数
-        for parser_obj in [parser_col_build, parser_col_add]:
+        for parser_obj in [parser_col_build]:
             for action in parser_obj._actions:
                 if action.dest == "project":
                     action.completer = _complete_project_names
