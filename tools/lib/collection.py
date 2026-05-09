@@ -343,14 +343,14 @@ def list_projects(
     projects = _discover_projects(kb_dir)
 
     # 获取已推送到 Hugo Pages 的项目集合
+    # 递归扫描 content/posts/ 下所有带 _index.md 的目录，构建相对路径集合
     pushed_slugs: set[str] = set()
     if pages_dir and pages_dir.exists():
         posts_dir = pages_dir / "content" / "posts"
         if posts_dir.exists():
-            for entry in posts_dir.iterdir():
-                if entry.is_dir() and (entry / "_index.md").exists():
-                    # 用 directory name 匹配 slug 的最后一段
-                    pushed_slugs.add(entry.name)
+            for index_file in posts_dir.rglob("*/_index.md"):
+                rel = index_file.parent.relative_to(posts_dir)
+                pushed_slugs.add(str(rel))
 
     result = {}
     for slug, path in projects.items():
@@ -379,13 +379,10 @@ def list_projects(
             display_parts = [f"{n:02d}-{name}" for n, name in nn_chain]
             display_path = "/".join(display_parts)
 
-        # 检查是否已推送到 GitHub Pages：嵌套项目检查父级目录，单层项目直接匹配
+        # 检查是否已推送到 GitHub Pages：直接匹配 slug 与已推送路径集合
         pushed = False
         if pushed_slugs:
-            slug_parts = slug.split("/")
-            last_part = slug_parts[-1]
-            # 单层项目直接匹配，嵌套项目匹配最后一段
-            pushed = last_part in pushed_slugs
+            pushed = slug in pushed_slugs
 
         result[slug] = {
             "path": path,
