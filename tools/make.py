@@ -2,11 +2,11 @@
 """
 make.py —— 统一内容制作入口
 
-knowledge-base 源文章 → 博客 + 多平台适配内容
+knowledge-base 源文章 → 博客；显式指定时再生成多平台适配内容
 
 用法:
   make.py new <title>              创建新文章
-  make.py build <article.md>       生成博客 + 所有平台内容
+  make.py build <article.md>       只生成博客
   make.py build --all              生成所有文章
   make.py build --platform xiaohongshu,zhihu  只生成指定平台
   make.py publish                  发布博客到 GitHub Pages
@@ -116,7 +116,7 @@ def cmd_new(args: argparse.Namespace) -> None:
 
 
 def cmd_build(args: argparse.Namespace) -> None:
-    """构建文章 —— 生成博客 + 各平台内容"""
+    """构建文章 —— 默认只生成博客；指定 --platform 时才生成对应平台内容。"""
     _load_env()
 
     # 确定要处理的文章列表
@@ -149,8 +149,11 @@ def cmd_build(args: argparse.Namespace) -> None:
                 platforms.append(p)
             else:
                 logger.warning(f"未知平台: {key}")
+        if not platforms:
+            logger.error("没有有效平台，已停止。可用平台请运行: make.py config")
+            return
     else:
-        platforms = list_platforms()
+        platforms = [get_platform("blog")]
 
     blog_platforms = [p for p in platforms if p.key == "blog"]
     non_blog_platforms = [p for p in platforms if p.key != "blog"]
@@ -452,19 +455,24 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  make.py new "我的新文章标题"
-  make.py build 2026-05-05-my-article.md
-  make.py build --all
+  # 文章构建
+  make.py new "我的新文章标题"                 创建新文章
+  make.py build 2026-05-05-my-article.md     只生成博客
+  make.py build --all                        为所有文章生成博客
   make.py build --platform xiaohongshu,zhihu 2026-05-05-my-article.md
-  make.py publish
-  make.py status
-  make.py config
-  make.py collection list
-  make.py collection build 01-openclaw
-  make.py collection build 04-工程那些事/01-电机控制
-  make.py collection build --all
-  make.py collection add-card harness
-  make.py collection add-card myproject --icon "🚀" --desc "项目描述"
+                                                只生成指定平台
+
+  # 集合管理
+  make.py collection list                      查看可用项目
+  make.py collection build 01-openclaw         构建单个集合
+  make.py collection build 04-工程那些事/01-电机控制   构建嵌套集合
+  make.py collection build --all               构建所有集合
+  make.py collection add-card myproject        添加首页卡片
+
+  # 发布与配置
+  make.py publish                              发布到 GitHub Pages
+  make.py status                               查看文章状态
+  make.py config                               查看配置
         """,
     )
 

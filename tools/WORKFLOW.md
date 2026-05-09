@@ -13,7 +13,7 @@ python tools/make.py new "我的新文章标题"
 # 3. 编辑文章
 # 打开 knowledge-base/articles/ 下生成的文件，按要求填写
 
-# 4. 一键生成
+# 4. 生成博客
 python tools/make.py build 2026-05-05-my-article.md
 
 # 5. 审核生成的内容
@@ -33,30 +33,30 @@ python tools/make.py new "OpenClaw Gateway 核心架构深度解析"
 
 这会在 `knowledge-base/articles/` 下生成文章文件。打开编辑：
 - 填写 frontmatter 元数据（tags、category、keywords、summary）
-- 设置 `platforms` 列表决定发布到哪些平台
+- 默认只生成博客；外部平台必须通过命令行 `--platform` 显式指定
 - 在正文中编写完整的技术长文（2000-5000字）
 
-### 第二步：生成多平台内容
+### 第二步：生成内容
 
 ```bash
-# 生成所有平台
+# 默认只生成博客
 python tools/make.py build 2026-05-05-openclaw-gateway.md
 
 # 只生成指定平台
 python tools/make.py build --platform xiaohongshu,zhihu 2026-05-05-openclaw-gateway.md
 
-# 批量生成所有文章
+# 批量为所有文章生成博客
 python tools/make.py build --all
 ```
 
 生成的内容：
-- `cygnusyang.github.io/content/posts/` - 博客原文
-- `tools/output/xiaohongshu/` - 小红书版本
-- `tools/output/zhihu/` - 知乎版本
-- `tools/output/wechat/` - 微信公众号版本
-- `tools/output/toutiao/` - 今日头条版本
-- `tools/output/baijiahao/` - 百家号版本
-- `tools/output/douyin/` - 抖音脚本版本
+- `cygnusyang.github.io/content/posts/` - 博客原文，默认生成
+- `tools/output/xiaohongshu/` - 小红书版本，仅指定 `--platform xiaohongshu` 时生成
+- `tools/output/zhihu/` - 知乎版本，仅指定 `--platform zhihu` 时生成
+- `tools/output/wechat/` - 微信公众号版本，仅指定 `--platform wechat` 时生成
+- `tools/output/toutiao/` - 今日头条版本，仅指定 `--platform toutiao` 时生成
+- `tools/output/baijiahao/` - 百家号版本，仅指定 `--platform baijiahao` 时生成
+- `tools/output/douyin/` - 抖音脚本版本，仅指定 `--platform douyin` 时生成
 
 ### 第三步：人工审核
 

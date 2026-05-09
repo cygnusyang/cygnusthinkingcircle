@@ -106,7 +106,7 @@ def generate_summary(title: str, sections: Dict[str, str]) -> str:
         return ""
 
 
-def process_post(post_file: Path) -> bool:
+def process_post(post_file: Path, platform_keys: set[str]) -> bool:
     """处理单篇文章"""
     logger.info(f"处理: {post_file.name}")
 
@@ -122,14 +122,22 @@ def process_post(post_file: Path) -> bool:
     # 提取标题
     title = extract_frontmatter_value(frontmatter, "title") or post_file.stem
 
-    # 生成各平台版本
-    outputs = [
-        (OUTPUT_DIR / "xiaohongshu" / f"{post_file.stem}.md", generate_xiaohongshu(title, sections)),
-        (OUTPUT_DIR / "douyin" / f"{post_file.stem}.md", generate_douyin(title, sections)),
-        (OUTPUT_DIR / "wechat" / f"{post_file.stem}.md", generate_wechat(title, sections)),
-        (OUTPUT_DIR / "baijiahao" / f"{post_file.stem}.md", generate_baijiahao(title, sections)),
-        (OUTPUT_DIR / "summary.md", generate_summary(title, sections)),
-    ]
+    generators = {
+        "xiaohongshu": (OUTPUT_DIR / "xiaohongshu" / f"{post_file.stem}.md", generate_xiaohongshu),
+        "douyin": (OUTPUT_DIR / "douyin" / f"{post_file.stem}.md", generate_douyin),
+        "wechat": (OUTPUT_DIR / "wechat" / f"{post_file.stem}.md", generate_wechat),
+        "baijiahao": (OUTPUT_DIR / "baijiahao" / f"{post_file.stem}.md", generate_baijiahao),
+        "summary": (OUTPUT_DIR / "summary.md", generate_summary),
+    }
+
+    outputs = []
+    for platform_key in platform_keys:
+        item = generators.get(platform_key)
+        if not item:
+            logger.warning(f"  跳过未知平台: {platform_key}")
+            continue
+        output_path, generator = item
+        outputs.append((output_path, generator(title, sections)))
 
     success = True
     for output_path, output_content in outputs:
@@ -148,19 +156,26 @@ def process_post(post_file: Path) -> bool:
 
 def main() -> None:
     """主函数"""
-    if len(sys.argv) < 2:
-        logger.info("用法: python tools/generate.py <post-file.md>")
-        logger.info("或: python tools/generate.py all  # 处理所有已发布文章")
+    if len(sys.argv) < 4 or sys.argv[1] != "--platform":
+        logger.info("此旧脚本不会默认生成任何平台内容。")
+        logger.info("用法: python tools/generate.py --platform xiaohongshu,wechat <post-file.md>")
+        logger.info("或: python tools/generate.py --platform xiaohongshu,wechat all")
+        logger.info("推荐使用: python tools/make.py build --platform xiaohongshu,wechat <article.md>")
         return
 
-    arg = sys.argv[1]
+    platform_keys = {item.strip() for item in sys.argv[2].split(",") if item.strip()}
+    if not platform_keys:
+        logger.error("请通过 --platform 指定至少一个平台")
+        return
+
+    arg = sys.argv[3]
 
     if arg == "all":
         # 处理所有文章
         count = 0
         try:
             for post_file in POSTS_DIR.glob("*.md"):
-                if process_post(post_file):
+                if process_post(post_file, platform_keys):
                     count += 1
             logger.info(f"\n完成：处理了 {count} 篇文章")
         except Exception as e:
@@ -172,7 +187,7 @@ def main() -> None:
             # 尝试不带路径
             post_file = next(POSTS_DIR.glob(f"*{arg}*"), None)
         if post_file and post_file.exists():
-            process_post(post_file)
+            process_post(post_file, platform_keys)
         else:
             logger.error(f"错误: 文章不存在: {arg}")
             available = [f.name for f in POSTS_DIR.glob('*.md')]

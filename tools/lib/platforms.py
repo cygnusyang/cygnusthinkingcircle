@@ -108,10 +108,25 @@ PLATFORMS: dict[str, PlatformConfig] = {
     ),
 }
 
+PLATFORM_ALIASES: dict[str, str] = {
+    "xh": "xiaohongshu",
+    "xhs": "xiaohongshu",
+    "小红书": "xiaohongshu",
+    "知乎": "zhihu",
+    "微信": "wechat",
+    "公众号": "wechat",
+    "头条": "toutiao",
+    "今日头条": "toutiao",
+    "百家号": "baijiahao",
+    "抖音": "douyin",
+    "博客": "blog",
+}
+
 
 def get_platform(key: str) -> PlatformConfig | None:
     """获取平台配置"""
-    return PLATFORMS.get(key)
+    normalized = PLATFORM_ALIASES.get(key.strip(), key.strip())
+    return PLATFORMS.get(normalized)
 
 
 def list_platforms() -> list[PlatformConfig]:

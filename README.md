@@ -1,8 +1,8 @@
 # 技术影响力系统
 
-跨平台内容分发平台 —— 写一次，分发到 7 个平台。
+跨平台内容分发平台 —— 写一次，默认生成博客，显式指定时再适配外部平台。
 
-**knowledge-base 源文章 → LLM 适配 → 博客 + 小红书/知乎/微信/头条/百家号/抖音**
+**knowledge-base 源文章 → 博客；按需 LLM 适配 → 小红书/知乎/微信/头条/百家号/抖音**
 
 ## 快速开始
 
@@ -22,7 +22,7 @@ python tools/make.py new "你的文章标题"
 # 4. 编辑文章
 # → knowledge-base/articles/ 下找到刚生成的文件，写内容
 
-# 5. 生成所有平台
+# 5. 生成博客
 python tools/make.py build --all
 
 # 6. 审核 + 发布博客
@@ -34,8 +34,8 @@ python tools/make.py publish
 | 命令 | 作用 |
 |------|------|
 | `make.py new "标题"` | 从模板创建新文章 |
-| `make.py build article.md` | 生成博客 + 所有平台 |
-| `make.py build --all` | 生成所有文章 |
+| `make.py build article.md` | 只生成博客 |
+| `make.py build --all` | 为所有文章生成博客 |
 | `make.py build --platform xh,zhihu article.md` | 只生成指定平台 |
 | `make.py collection list` | 列出所有可用项目集合 |
 | `make.py collection build <项目>` | 批量转换项目为 Hugo Pages |
