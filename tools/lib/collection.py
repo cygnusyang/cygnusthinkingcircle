@@ -3,8 +3,10 @@
 import re
 import logging
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Optional
+from urllib.parse import unquote
 
 from .article import parse_frontmatter
 from .publisher import process_local_images
@@ -464,6 +466,8 @@ _CARD_ARIA_LABELS: dict[str, str] = {
     "openclaw": "OpenClaw",
     "gstack": "GStack",
     "gbrain": "GBrain",
+    "工程那些事/电机控制": "电机控制",
+    "研发那些事/研发绩效体系": "研发绩效体系",
     "claudecode": "Claude Code",
     "codex": "Codex",
     "mcp": "MCP",
@@ -471,16 +475,23 @@ _CARD_ARIA_LABELS: dict[str, str] = {
     "academic-research-skills": "Academic research skills",
 }
 
+_CARD_LABEL_ALIASES: dict[str, list[str]] = {
+    "工程那些事/电机控制": ["电机控制", "工程那些事"],
+    "研发那些事/研发绩效体系": ["研发绩效体系", "研发那些事"],
+}
+
 # 已知项目的默认图标映射（emoji）
 _CARD_ICONS: dict[str, str] = {
     "openclaw": "🤖",
     "gstack": "📚",
     "gbrain": "🧠",
+    "工程那些事/电机控制": "⚙️",
+    "研发那些事/研发绩效体系": "💡",
     "claudecode": "⌨️",
     "codex": "📖",
     "mcp": "🔌",
     "harness": "⚙️",
-    "academic-research-skills": "🔬",
+    "academic-research-skills": "📦",
 }
 
 
@@ -493,6 +504,7 @@ def _update_index_cards(index_path: Path, project_slug: str, count: int, kb_dir:
         return False
 
     label = _CARD_ARIA_LABELS[project_slug]
+    labels = _CARD_LABEL_ALIASES.get(project_slug, [label])
     nn = _get_project_nn(project_slug, kb_dir)
     html = index_path.read_text(encoding="utf-8")
 
@@ -500,35 +512,36 @@ def _update_index_cards(index_path: Path, project_slug: str, count: int, kb_dir:
     #            <span class="category-card-badge">TEXT</span>
     #            <div ...></div>
     #            <h3 ...>TITLE</h3>
+    labels_re = "|".join(re.escape(item) for item in labels)
     card_re = re.compile(
-        r'(<a\s+href=")[^"]*("\s+class="category-card"\s+aria-label="'
-        + re.escape(label)
-        + r'">)\s*(<span\s+class="category-card-badge">)([^<]*)(</span>)\s*(<div\s+class="category-card-icon">.*?</div>)\s*(<h3\s+class="category-card-title">)([^<]*)(</h3>)'
+        r'(<a\s+href=")[^"]*("\s+class="category-card"\s+aria-label=")'
+        + r'(?:' + labels_re + r')'
+        + r'(">)\s*(<span\s+class="category-card-badge">)([^<]*)(</span>)\s*(<div\s+class="category-card-icon">.*?</div>)\s*(<h3\s+class="category-card-title">)([^<]*)(</h3>)\s*(<(?:span|p)\s+class="category-card-desc">)(.*?)(</(?:span|p)>)\s*(</a>)'
     )
 
     match = card_re.search(html)
     if not match:
         return False
 
-    old_badge = match.group(4)
+    old_badge = match.group(5)
     new_href = f"/posts/{project_slug}/"
     new_badge = f"{count} 篇"
 
     # 更新标题：添加 NN- 前缀
-    old_title = match.group(8)
-    display_name = label
+    old_title = match.group(9)
+    card_desc = match.group(12)
+    display_name = _derive_display_name(project_slug)
     titled_display_name = f"{nn:02d}-{display_name}"
-
-    if old_badge == new_badge and old_title == titled_display_name:
-        return False  # 无需更新
 
     # 使用回调函数避免 f-string 中 backreference 的转义问题
     def _replace(m: re.Match) -> str:
         return (
-            m.group(1) + new_href + m.group(2) + "\n"
-            + "          " + m.group(3) + new_badge + m.group(5) + "\n"
-            + "      " + m.group(6) + "\n"
-            + "      " + m.group(7) + titled_display_name + m.group(9) + "\n"
+            m.group(1) + new_href + m.group(2) + escape(display_name, quote=True) + m.group(3) + "\n"
+            + "          " + m.group(4) + new_badge + m.group(6) + "\n"
+            + "      " + m.group(7) + "\n"
+            + "      " + m.group(8) + escape(titled_display_name) + m.group(10) + "\n"
+            + "    " + '<span class="category-card-desc">' + card_desc + "</span>\n"
+            + "  " + m.group(14)
         )
 
     updated = card_re.sub(_replace, html)
@@ -564,6 +577,14 @@ def _derive_display_name(slug: str) -> str:
 def _derive_card_icon(slug: str) -> str:
     """获取项目的默认卡片图标。"""
     return _CARD_ICONS.get(slug, "📦")
+
+
+def _slug_from_card_href(card_html: str) -> str | None:
+    """从首页卡片 href 反推出项目 slug。"""
+    href_m = re.search(r'href="/posts/([^"]+)/"', card_html)
+    if not href_m:
+        return None
+    return unquote(href_m.group(1).strip("/"))
 
 
 def _get_project_nn(slug: str, kb_dir: Path) -> int:
@@ -646,14 +667,14 @@ def _card_sort_key(card_html: str, kb_dir: Path) -> tuple[int, str]:
     # 提取 aria-label
     label_m = re.search(r'aria-label="([^"]*)"', card_html)
     label = label_m.group(1) if label_m else ""
+    slug = _slug_from_card_href(card_html)
 
     # 反查 aria-label → slug
     reverse_map: dict[str, str] = {v: k for k, v in _CARD_ARIA_LABELS.items()}
 
-    slug = None
-    if label in reverse_map:
+    if not slug and label in reverse_map:
         slug = reverse_map[label]
-    else:
+    if not slug:
         # 尝试直接匹配 knowledge-base 项目 slug
         slug_candidate = label.lower().replace(" ", "-")
         projects = _discover_projects(kb_dir)
@@ -765,8 +786,8 @@ def add_project_card(
     # 获取项目 NN- 编号
     nn = _get_project_nn(project_slug, kb_dir)
 
-    # 标题添加 NN- 前缀
-    titled_display_name = f"{nn:02d}-{display_name}"
+    # 已存在于知识库的项目使用 NN- 前缀；预告卡片保持当前首页风格。
+    titled_display_name = f"{nn:02d}-{display_name}" if nn != 99 else display_name
 
     # 生成新卡片 HTML（与现有敬请期待卡片风格一致）
     new_card = (
@@ -775,7 +796,7 @@ def add_project_card(
         f'    <span class="category-card-badge">敬请期待</span>\n'
         f'    <div class="category-card-icon">{card_icon}</div>\n'
         f'    <h3 class="category-card-title">{titled_display_name}</h3>\n'
-        f'    <p class="category-card-desc">{card_desc}</p>\n'
+        f'    <span class="category-card-desc">{escape(card_desc)}</span>\n'
         f'  </a>'
     )
 
