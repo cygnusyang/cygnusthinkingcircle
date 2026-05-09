@@ -242,7 +242,34 @@ def cmd_publish(args: argparse.Namespace) -> None:
             return
 
         # git commit
-        msg = args.message or "post: 发布新文章"
+        if args.message:
+            msg = args.message
+        else:
+            # 自动根据变更内容生成 commit 消息
+            result = subprocess.run(
+                ["git", "-C", str(pages_dir), "diff", "--cached", "--name-only"],
+                capture_output=True, text=True, check=True,
+            )
+            added_files = result.stdout.strip().split("\n") if result.stdout.strip() else []
+            # 提取集合目录名或文章文件名
+            collection_dirs = set()
+            article_names = []
+            for f in added_files:
+                f = f.strip()
+                if not f:
+                    continue
+                rel = f.replace("content/posts/", "", 1) if f.startswith("content/posts/") else f
+                parts = rel.split("/")
+                if len(parts) >= 2 and parts[0]:
+                    collection_dirs.add(parts[0])
+                    article_names.append(parts[-1])
+            if collection_dirs:
+                dir_list = ", ".join(sorted(collection_dirs))
+                msg = f"post: update {dir_list} collection ({len(article_names)} articles)"
+            elif article_names:
+                msg = f"post: publish {len(article_names)} articles"
+            else:
+                msg = "post: publish new articles"
         subprocess.run(
             ["git", "-C", str(pages_dir), "commit", "-m", msg],
             check=True,
