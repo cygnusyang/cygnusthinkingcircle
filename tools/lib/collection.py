@@ -220,6 +220,17 @@ def build_collection(
         date = datetime.now().strftime("%Y-%m-%d")
 
     output_dir = content_dir / "posts" / project_slug
+
+    # 构建前先清理该集合的旧文件，避免重复生成
+    if output_dir.exists():
+        old_count = 0
+        for f in list(output_dir.glob("*.md")):
+            if f.name == "_index.md":
+                continue  # _index.md 最后单独重建
+            f.unlink()
+            old_count += 1
+        if old_count > 0:
+            logger.info(f"  清理旧文件: {old_count} 篇")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # static 目录在项目根目录的 static
