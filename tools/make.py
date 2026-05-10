@@ -44,7 +44,7 @@ from tools.lib.platforms import (
 )
 from tools.lib.publisher import publish_to_blog, save_platform_output
 from tools.lib.llm import adapt_for_platform
-from tools.lib.collection import build_collection, list_projects, resolve_project_by_input
+from tools.lib.collection import build_collection, list_projects, resolve_project_by_input, sync_catalog_to_hugo
 from tools.lib.validator import validate_article, validate_collection_posts, Issue
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -345,6 +345,9 @@ def cmd_publish(args: argparse.Namespace) -> None:
     if not pages_dir.exists():
         logger.error(f"GitHub Pages 目录不存在: {pages_dir}")
         return
+
+    # 同步 catalog.yaml 到 Hugo data 目录，确保渲染使用最新 catalog
+    sync_catalog_to_hugo(KB_DIR, PAGES_DIR)
 
     logger.info("📤 发布到 GitHub Pages...")
 
@@ -780,6 +783,9 @@ def cmd_collection(args: argparse.Namespace) -> None:
         if getattr(args, 'dry_run', False):
             _collection_dry_run(slugs, args.source or "blog")
             return
+
+        # 同步 catalog.yaml 到 Hugo data 目录
+        sync_catalog_to_hugo(KB_DIR, PAGES_DIR)
 
         total = 0
         for slug in slugs:

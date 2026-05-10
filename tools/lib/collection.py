@@ -341,7 +341,7 @@ def build_collection(
         nn = _get_project_nn(project_slug, kb_dir)
         display_name = _derive_display_name(project_slug)
         titled_display_name = f"{nn:02d}-{display_name} 文档"
-        icon = _derive_card_icon(project_slug)
+        icon = _derive_card_icon(project_slug, kb_dir)
         index_content = _generate_index_md(titled_display_name, date, icon)
         (output_dir / "_index.md").write_text(index_content, encoding="utf-8")
         logger.info(f"  [{project_slug}] _index.md")
@@ -377,22 +377,45 @@ def _derive_display_name(slug: str) -> str:
     return last_segment.title()
 
 
-def _derive_card_icon(slug: str) -> str:
-    """从 slug 推导默认图标。"""
-    icon_map = {
-        "openclaw": "🤖",
-        "gstack": "📚",
-        "gbrain": "🧠",
-        "claudecode": "⌨️",
-        "codex": "📖",
-        "mcp": "🔌",
-        "harness": "⚙️",
-        "academic-research-skills": "📦",
-        "电机控制": "⚙️",
-        "研发绩效体系": "💡",
+def _derive_card_icon(slug: str, kb_dir: Path) -> str:
+    """从 catalog.yaml 读取图标，fallback 到默认映射。"""
+    catalog_path = kb_dir / CATALOG_YAML
+    if catalog_path.exists():
+        data = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) or {}
+        for catalog in data.get("catalogs", []):
+            for child in catalog.get("children", []):
+                if child.get("output") == slug:
+                    icon = child.get("icon")
+                    if icon:
+                        return icon
+    # fallback
+    fallback = {
+        "openclaw": "🤖", "gstack": "📚", "gbrain": "🧠",
+        "claudecode": "⌨️", "codex": "📖", "mcp": "🔌",
+        "harness": "⚙️", "academic-research-skills": "📦",
     }
     last_segment = slug.split("/")[-1]
-    return icon_map.get(last_segment, "📦")
+    return fallback.get(last_segment, "📦")
+
+
+CATALOG_YAML = "catalog.yaml"
+HUGO_DATA_CATALOG = "data/catalog.yaml"
+
+
+def sync_catalog_to_hugo(kb_dir: Path, pages_dir: Path) -> bool:
+    """将 knowledge-base/catalog.yaml 同步到 Hugo data/catalog.yaml。
+
+    Returns:
+        True if synced, False if source doesn't exist
+    """
+    source = kb_dir / CATALOG_YAML
+    if not source.exists():
+        return False
+    target = pages_dir / HUGO_DATA_CATALOG
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    logger.info(f"  📋 已同步 catalog.yaml → {target}")
+    return True
 
 
 def normalize_slug(input_slug: str) -> str:
