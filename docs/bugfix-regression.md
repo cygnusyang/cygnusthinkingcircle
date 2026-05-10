@@ -310,6 +310,77 @@ commit 消息包含变更的集合名称和文章数量。
 
 ---
 
+## BUG-012：首页卡片点击进入分类页面只显示"暂无分类目录"
+
+**严重级别：** HIGH
+**修复 commit：** (待提交)
+**修复日期：** 2026-05-10
+**涉及文件：** `cygnusyang.github.io/layouts/posts/section.html`
+
+### 问题描述
+
+首页卡片点击后进入分类页面（如 `/posts/openclaw/`），页面只显示"暂无分类目录。在 `content/posts/` 下创建子目录即可添加分类。"，不展示该分类下的任何文章。
+
+根因：`section.html` 模板通过 `.Sections`（嵌套子目录）判断是否有内容。当分类目录下直接存放文章文件（如 `openclaw/` 下有 34 篇 `.md` 文件）而没有子目录时，`.Sections` 为空，触发空状态分支。
+
+### 修复方案
+
+修改 `section.html` 模板逻辑：
+1. 将条件判断从 `if $sections` 改为 `if or $sections $pages`
+2. 当有子目录时，按现有逻辑显示子目录分组
+3. 当没有子目录但有页面时，直接显示页面列表（按日期倒序）
+4. 当两者都没有时，显示空状态
+
+### 复现步骤
+
+1. 启动 Hugo 本地服务器：`hugo server`
+2. 打开首页，点击任意项目卡片（如 OpenClaw）
+3. 进入分类页面
+
+### 预期结果
+
+分类页面展开显示该分类下的所有文章列表，包含标题、日期和描述。
+
+---
+
+## BUG-013：左侧导航栏分类与首页卡片分类不一致
+
+**严重级别：** HIGH
+**修复 commit：** 待修复
+**修复日期：** 2026-05-10
+**涉及文件：** `cygnusyang.github.io/layouts/_partials/site-sidebar-nav-assets.html`, `cygnusyang.github.io/layouts/shortcodes/category-popup.html`
+
+### 问题描述
+
+首页文章卡片和左侧文档导航栏显示的分类不一致，存在两套平行的目录结构：
+
+- **首页卡片** 链接到扁平目录：`openclaw/`, `gstack/`, `gbrain/`, `claudecode/`, `codex/`, `mcp/`, `harness/`, `academic-research-skills/`
+- **左侧导航栏** 显示编号目录：`01-openclaw/`, `02-gstack/`, `03-gbrain/`, `06-claudecode/`, `08-codex/`, `09-harness/`, `10-academic-research-skills/`
+
+根因：`site-sidebar-nav-assets.html` 通过 `.Site.Sections` 遍历所有 section，包括 `01-openclaw/` 等编号目录。而 `category-popup.html`（首页卡片）按 `pinned_categories` 参数匹配 slug，指向的是 `openclaw/` 等扁平目录。两边指向的是不同的路径。
+
+### 约束条件
+
+首页卡片分类、左侧导航栏分类、`content/posts/` 下的实际目录结构三者必须一一对应：
+
+1. `pinned_categories` 中的 slug 必须与 `content/posts/` 下的实际目录名一致
+2. 左侧导航栏只显示 `pinned_categories` 中列出的分类
+3. 首页卡片点击后的 URL 必须与导航栏中对应分类的 URL 一致
+4. 不允许存在两套平行的目录结构（编号目录 vs 扁平目录）
+
+### 复现步骤
+
+1. 打开首页，观察"文章"区域的分类卡片（如 OpenClaw、GStack 等）
+2. 点击任意卡片进入分类页面
+3. 观察左侧导航栏显示的分类名称
+4. 对比两者是否一致
+
+### 预期结果
+
+首页卡片显示的分类与左侧导航栏显示的分类一一对应，名称、顺序、层级关系完全一致。
+
+---
+
 ## 回归测试检查清单
 
 每次发布新功能或修复 Bug 后，执行以下检查：
