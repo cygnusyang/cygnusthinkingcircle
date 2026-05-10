@@ -17,6 +17,7 @@ knowledge-base 源文章 → 博客；显式指定时再生成多平台适配内
 import argparse
 import logging
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -33,9 +34,7 @@ TOOLS_DIR = Path(__file__).parent
 sys.path.insert(0, str(TOOLS_DIR.parent))
 
 from tools.lib.article import (
-    Article,
     load_article,
-    generate_hugo_frontmatter,
     find_articles,
 )
 from tools.lib.platforms import (
@@ -45,7 +44,7 @@ from tools.lib.platforms import (
 )
 from tools.lib.publisher import publish_to_blog, save_platform_output
 from tools.lib.llm import adapt_for_platform
-from tools.lib.collection import build_collection, list_projects, normalize_slug, resolve_project_by_input
+from tools.lib.collection import build_collection, list_projects, resolve_project_by_input
 from tools.lib.validator import validate_article, validate_collection_posts, Issue
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -91,7 +90,6 @@ def cmd_new(args: argparse.Namespace) -> None:
         return
 
     date = datetime.now().strftime("%Y-%m-%d")
-    import re
 
     # 确定目标目录
     resolved_slug = None
@@ -188,7 +186,6 @@ def cmd_new(args: argparse.Namespace) -> None:
 
 def _extract_chapter_from_filename(filename: str) -> int:
     """从文件名提取章节号（NN- 开头的数字）。"""
-    import re
     m = re.match(r"^(\d+)[-_]", filename)
     if m:
         return int(m.group(1))
@@ -411,13 +408,13 @@ def cmd_publish(args: argparse.Namespace) -> None:
 
         # 更新父仓库子模块引用
         if args.update_submodule:
-            _update_parent_submodule(BASE_DIR, pages_dir)
+            _update_parent_submodule(BASE_DIR)
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Git 操作失败: {e}")
 
 
-def _update_parent_submodule(base_dir: Path, pages_dir: Path) -> None:
+def _update_parent_submodule(base_dir: Path) -> None:
     """更新父仓库的子模块引用并推送。"""
     import subprocess
 
@@ -597,7 +594,6 @@ def cmd_stats(args: argparse.Namespace) -> None:
             total_words += word_count
 
             # 图片数
-            import re
             image_count = len(re.findall(r'!\[([^\]]*)\]\(([^)]+)\)', content))
             collection_stats[collection]["images"] += image_count
             total_images += image_count
@@ -673,7 +669,6 @@ def _collection_dry_run(slugs: list[str], source_subdir: str) -> None:
     from tools.lib.collection import (
         _discover_projects,
         _find_markdown_files,
-        _extract_chapter_number,
         _extract_title_from_body,
     )
     from tools.lib.article import parse_frontmatter
