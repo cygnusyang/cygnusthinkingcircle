@@ -81,3 +81,9 @@ catalogs:
         title: 研发绩效体系
         weight: 5
         icon: 💡
+      - id: rd-innovation-delivery
+        source: 03-研发那些事/02-研发创新及交付
+        output: 研发那些事/研发创新及交付
+        title: 研发创新及交付
+        weight: 6
+        icon: 🚀

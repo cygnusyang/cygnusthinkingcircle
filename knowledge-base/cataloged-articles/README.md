@@ -21,3 +21,4 @@
 ## 03-研发那些事
 
 - `knowledge-base/cataloged-articles/03-研发那些事/01-研发绩效体系`
+- `knowledge-base/cataloged-articles/03-研发那些事/02-研发创新及交付`

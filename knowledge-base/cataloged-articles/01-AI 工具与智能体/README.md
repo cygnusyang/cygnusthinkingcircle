@@ -4,11 +4,11 @@ AI Agent、编码代理、协议与自动化工作流
 
 ## 系列
 
-- 01-OpenClaw: `01-openclaw` -> `openclaw`
-- 02-GStack: `02-gstack` -> `gstack`
-- 03-GBrain: `03-gbrain` -> `gbrain`
-- 06-Claude Code: `06-claudecode` -> `claudecode`
-- 07-MCP: `07-mcp` -> `mcp`
-- 08-Codex: `08-codex` -> `codex`
-- 09-Harness: `09-harness` -> `harness`
-- 10-Academic research skills: `10-academic-research-skills` -> `academic-research-skills`
+- 01-OpenClaw: `01-AI 工具与智能体/01-OpenClaw` -> `openclaw`
+- 02-GStack: `01-AI 工具与智能体/02-GStack` -> `gstack`
+- 03-GBrain: `01-AI 工具与智能体/03-GBrain` -> `gbrain`
+- 06-Claude Code: `01-AI 工具与智能体/04-Claude Code` -> `claudecode`
+- 07-MCP: `01-AI 工具与智能体/05-MCP` -> `mcp`
+- 08-Codex: `01-AI 工具与智能体/06-Codex` -> `codex`
+- 09-Harness: `01-AI 工具与智能体/07-Harness` -> `harness`
+- 10-Academic research skills: `01-AI 工具与智能体/08-Academic research skills` -> `academic-research-skills`
