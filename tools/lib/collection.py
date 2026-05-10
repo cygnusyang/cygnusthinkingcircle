@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+import yaml
 
 from .article import parse_frontmatter
 from .publisher import process_local_images
@@ -36,6 +37,22 @@ def _discover_projects(kb_dir: Path) -> dict[str, Path]:
     articles_dir = kb_dir / "articles"
     if not articles_dir.exists():
         return {}
+
+    catalog_path = kb_dir / "catalog.yaml"
+    if catalog_path.exists():
+        data = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) or {}
+        projects: dict[str, Path] = {}
+        for catalog in data.get("catalogs", []):
+            for child in catalog.get("children", []):
+                source = child.get("source")
+                output = child.get("output")
+                if not source or not output:
+                    continue
+                project_path = articles_dir / source
+                if project_path.exists():
+                    projects[output] = project_path
+        if projects:
+            return projects
 
     # 收集所有 NN- 目录，按深度从浅到深排序
     candidates = []
@@ -77,14 +94,34 @@ def _discover_projects(kb_dir: Path) -> dict[str, Path]:
     return projects
 
 
+_CHINESE_NUMS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+
+
+def _sort_key_for_blog_file(file_path: Path) -> tuple[int, str]:
+    """为 blog 文件生成排序 key。
+
+    优先提取中文章节号（第一章 → 1），无章节号的文件（如总结）排在最后（999）。
+    """
+    stem = file_path.stem
+    m = re.match(r"^第([一二三四五六七八九十]+)章", stem)
+    if m:
+        chapter_num = _CHINESE_NUMS.get(m.group(1), 999)
+        return (chapter_num, stem)
+    return (999, stem)
+
+
 def _find_markdown_files(source_dir: Path) -> list[Path]:
-    """递归查找目录下所有 .md 文件（排除非文章文件）。"""
+    """递归查找目录下所有 .md 文件（排除非文章文件）。
+
+    返回按章节号排序的文件列表，无章节号的文件排在最后。
+    """
     exclude = {"README.md", "TODO.md", "CLAUDE.md", "_index.md"}
     files = []
-    for f in sorted(source_dir.rglob("*.md")):
+    for f in source_dir.rglob("*.md"):
         if f.name in exclude:
             continue
         files.append(f)
+    files.sort(key=_sort_key_for_blog_file)
     return files
 
 
@@ -270,8 +307,10 @@ def build_collection(
 
         # 全局连续编号：避免不同子目录下文件都有 "01-" 前缀导致章节号重复
         chapter_counter += 1
+        # 去掉标题中已有的中文章节号前缀（如"第一章："、"第二章 - "），避免与新的"第NN章"前缀重复
+        clean_title = re.sub(r"^第[一二三四五六七八九十]+章[\s：:-]*", "", title)
         # title 也带上章节编号，确保 Hugo 渲染时标题有"第NN章"前缀
-        display_title = f"第{chapter_counter:02d}章 {title}"
+        display_title = f"第{chapter_counter:02d}章 {clean_title}"
         category = _derive_category(file_path, source_dir)
 
         # 生成 Hugo frontmatter
@@ -287,7 +326,7 @@ def build_collection(
 
         # 生成文件名
         ch_prefix = f"第{chapter_counter:02d}章-"
-        safe_title = _sanitize_filename_part(title)
+        safe_title = _sanitize_filename_part(clean_title)
         filename = f"{file_date}-{ch_prefix}{safe_title}.md"
 
         # 写入
@@ -308,6 +347,52 @@ def build_collection(
         logger.info(f"  [{project_slug}] _index.md")
 
     return count
+
+
+def _get_project_nn(slug: str, kb_dir: Path) -> int:
+    """提取项目的 NN 前缀编号，用于 _index.md 标题排序。"""
+    catalog_path = kb_dir / "catalog.yaml"
+    if catalog_path.exists():
+        data = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) or {}
+        for catalog in data.get("catalogs", []):
+            for child in catalog.get("children", []):
+                if child.get("output") == slug:
+                    return int(child.get("weight", 99))
+
+    articles_dir = kb_dir / "articles"
+    projects = _discover_projects(kb_dir)
+    if slug not in projects:
+        return 99
+    project_path = projects[slug]
+    rel_path = project_path.relative_to(articles_dir)
+    first_part = rel_path.parts[0]
+    m = re.match(r"^(\d{2})-", first_part)
+    return int(m.group(1)) if m else 99
+
+
+def _derive_display_name(slug: str) -> str:
+    """从 slug 推导人类可读的显示名称。"""
+    last_segment = slug.split("/")[-1]
+    last_segment = last_segment.replace("-", " ")
+    return last_segment.title()
+
+
+def _derive_card_icon(slug: str) -> str:
+    """从 slug 推导默认图标。"""
+    icon_map = {
+        "openclaw": "🤖",
+        "gstack": "📚",
+        "gbrain": "🧠",
+        "claudecode": "⌨️",
+        "codex": "📖",
+        "mcp": "🔌",
+        "harness": "⚙️",
+        "academic-research-skills": "📦",
+        "电机控制": "⚙️",
+        "研发绩效体系": "💡",
+    }
+    last_segment = slug.split("/")[-1]
+    return icon_map.get(last_segment, "📦")
 
 
 def normalize_slug(input_slug: str) -> str:
