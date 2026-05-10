@@ -9,7 +9,8 @@
 
 | 编号 | 问题摘要 | 严重级别 | 状态 | 修复 commit | 修复日期 |
 |------|---------|---------|------|------------|---------|
-| BUG-013 | 左侧导航栏与首页卡片分类不一致 | HIGH | 🚧 待修复 | — | — |
+| BUG-014 | 首页与分类页左侧导航栏位置不一致 | LOW | 🚧 待修复 | — | — |
+| BUG-013 | 左侧导航栏与首页卡片分类不一致 | HIGH | ✅ 已修复 | (待提交) | 2026-05-10 |
 | BUG-012 | 卡片点击进入分类页面只显示空状态 | HIGH | ✅ 已修复 | `68915c6` | 2026-05-10 |
 | BUG-011 | make.py 未使用的导入和冗余代码 | LOW | ✅ 已修复 | `323014a` | 2026-05-10 |
 | BUG-010 | publish 未更新父仓库子模块引用 | HIGH | ✅ 已修复 | `ef9bc31` | 2026-05-10 |
@@ -23,16 +24,52 @@
 | BUG-002 | find_articles 未处理 blog/ 子目录 | HIGH | ✅ 已修复 | `596f097` | 2026-05-10 |
 | BUG-001 | find_articles 重复计数 collection 文件 | HIGH | ✅ 已修复 | `30428c7` | 2026-05-08 |
 
-**统计：** 已修复 12/13，待修复 1，修复率 92.3%
+**统计：** 已修复 13/14，待修复 1，修复率 92.9%
+
+---
+
+## BUG-014：首页与分类页左侧导航栏位置不一致
+
+**严重级别：** LOW
+**修复 commit：** 待修复
+**修复日期：** 2026-05-10
+**涉及文件：** 待定位（首页布局模板、分类页布局模板）
+
+### 问题描述
+
+首页和分类页面都显示左侧导航栏，但导航栏的垂直位置（滚动偏移、锚点位置）在两个页面之间不一致。例如：
+
+- 在首页时，左侧导航栏的某个分类位于可视区域上方
+- 点击进入某个卡片（如 OpenClaw）进入分类页面后，左侧导航栏整体发生了位置偏移，同样的分类项出现在不同的高度
+
+根因：首页和分类页面可能使用了不同的布局模板或不同的侧边栏渲染逻辑，导致导航栏的容器高度、padding、margin 等样式参数不一致。
+
+### 修复方案
+
+1. 对比首页和分类页的侧边栏 HTML 结构，找出差异
+2. 统一两者的导航栏容器样式（padding、margin、line-height 等）
+3. 确保导航项的展开/折叠状态在两个页面中渲染一致
+4. 可选：提取公共侧边栏组件，避免两套模板
+
+### 复现步骤
+
+1. 打开首页，观察左侧导航栏各分类项的垂直位置
+2. 点击任意卡片进入分类页面（如 `/posts/openclaw/`）
+3. 观察同一分类项在左侧导航栏中的垂直位置
+4. 对比两者是否有偏移
+
+### 预期结果
+
+首页和分类页面的左侧导航栏在视觉位置、滚动行为、展开状态上完全一致，用户切换页面时不会感到导航栏"跳动"。
 
 ---
 
 ## BUG-013：左侧导航栏分类与首页卡片分类不一致
 
 **严重级别：** HIGH
-**修复 commit：** 待修复
+**修复 commit：** (待提交)
 **修复日期：** 2026-05-10
-**涉及文件：** `cygnusyang.github.io/layouts/_partials/site-sidebar-nav-assets.html`, `cygnusyang.github.io/layouts/shortcodes/category-popup.html`
+**涉及文件：** `cygnusyang.github.io/layouts/_partials/site-sidebar-nav-assets.html`
 
 ### 问题描述
 
@@ -42,6 +79,12 @@
 - **左侧导航栏** 显示编号目录：`01-openclaw/`, `02-gstack/`, `03-gbrain/`, `06-claudecode/`, `08-codex/`, `09-harness/`, `10-academic-research-skills/`
 
 根因：`site-sidebar-nav-assets.html` 通过 `.Site.Sections` 遍历所有 section，包括 `01-openclaw/` 等编号目录。而 `category-popup.html`（首页卡片）按 `pinned_categories` 参数匹配 slug，指向的是 `openclaw/` 等扁平目录。两边指向的是不同的路径。
+
+### 修复方案
+
+1. 修改 `site-sidebar-nav-assets.html`，添加 `pinned_categories` 过滤逻辑，只显示首页 `pinned_categories` 中列出的分类
+2. 删除 `content/posts/` 下的所有编号目录（`01-openclaw/`、`02-gstack/` 等），保留扁平目录结构
+3. 确保三者一致：`pinned_categories`、实际目录结构、导航栏显示
 
 ### 约束条件
 
