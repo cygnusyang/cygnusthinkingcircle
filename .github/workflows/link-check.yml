@@ -1,0 +1,44 @@
+name: Link Check
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  link-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.161.1'
+          extended: true
+
+      - name: Build
+        run: |
+          cd cygnusyang.github.io
+          hugo --minify
+
+      - name: Check internal links
+        uses: Untitled-Game/gha-dead-link-checker@v1.0.0
+        with:
+          folder_to_check: "cygnusyang.github.io/public"
+          file_types: "html"
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🔗 Dead links detected',
+              body: 'Weekly link check found broken links. See workflow output for details.\n\nRun: https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
+              labels: ['bug']
+            });

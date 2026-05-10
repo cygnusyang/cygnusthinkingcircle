@@ -1,0 +1,36 @@
+name: Build Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cygnusyang.github.io/**'
+      - 'tools/**'
+      - 'knowledge-base/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.161.1'
+          extended: true
+
+      - name: Build
+        run: |
+          cd cygnusyang.github.io
+          hugo --minify
+        env:
+          HUGO_ENV: production
+
+      - name: Check output
+        run: |
+          echo "Pages generated:"
+          find cygnusyang.github.io/public -name "*.html" | wc -l
+          du -sh cygnusyang.github.io/public
