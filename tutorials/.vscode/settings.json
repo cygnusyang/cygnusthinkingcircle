@@ -1,0 +1,7 @@
+{
+  "markdown.extension.toc.levels": "2..6",
+  "markdown.extension.tableFormatter.normalizeIndentation": false,
+  "files.associations": {
+    "*.md": "markdown"
+  }
+}
