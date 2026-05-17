@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@waline/vercel": "^2.0.0"
+    "@waline/vercel": "^1.39.0"
   },
   "engines": {
     "node": "22.x"
